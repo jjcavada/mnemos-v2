@@ -38,9 +38,21 @@ const TIER_2_GLOW = "#a5b4fc"; // soft violet
 export function Graph2D() {
   const { memories, relationships, projectsById, select, filters } = useMemoriesStore();
   const fgRef = useRef<any>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const starsRef = useRef<Star[] | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const obs = new ResizeObserver(measure);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   const data = useMemo(() => {
     const filtered = applyFilters(memories);
@@ -225,9 +237,11 @@ export function Graph2D() {
   }
 
   return (
-    <div className="absolute inset-0">
+    <div ref={wrapperRef} className="absolute inset-0">
       <ForceGraph2D
         ref={fgRef as any}
+        width={size.w || undefined}
+        height={size.h || undefined}
         graphData={graphData}
         backgroundColor="#03060c"
         nodeRelSize={1}

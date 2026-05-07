@@ -1,6 +1,6 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMemoriesStore, applyFilters } from "@/store/memories";
 import { memoryColor, RELATION_EDGE_COLORS } from "@/lib/colors";
 
@@ -9,6 +9,18 @@ const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), { ssr: false 
 export function Graph3D() {
   const { memories, relationships, projectsById, select, filters } = useMemoriesStore();
   const ref = useRef<any>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const obs = new ResizeObserver(measure);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   const data = useMemo(() => {
     const filtered = applyFilters(memories);
@@ -27,9 +39,11 @@ export function Graph3D() {
   }, [memories, relationships, projectsById, filters]);
 
   return (
-    <div className="absolute inset-0">
+    <div ref={wrapperRef} className="absolute inset-0">
       <ForceGraph3D
         ref={ref as any}
+        width={size.w || undefined}
+        height={size.h || undefined}
         graphData={data}
         backgroundColor="#020407"
         nodeColor={(n: any) => n.color}
