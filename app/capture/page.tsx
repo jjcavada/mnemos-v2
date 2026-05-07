@@ -1,6 +1,6 @@
 "use client";
-import { useMemo, useState } from "react";
-import { Brain, Check, Loader2, Save } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Brain, Check, KeyRound, Loader2, Save } from "lucide-react";
 import { useMemoriesStore } from "@/store/memories";
 import { MemoryDrawer } from "@/components/MemoryDrawer";
 import type { Memory } from "@/lib/types";
@@ -29,6 +29,18 @@ export default function CapturePage() {
   const [lifeArea, setLifeArea] = useState("other");
   const [saving, setSaving] = useState(false);
   const [response, setResponse] = useState<CaptureResponse | null>(null);
+  const [apiToken, setApiToken] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setApiToken(sessionStorage.getItem("mnemos_api_token") ?? "");
+  }, []);
+
+  function saveApiToken(value: string) {
+    setApiToken(value);
+    if (value.trim()) sessionStorage.setItem("mnemos_api_token", value.trim());
+    else sessionStorage.removeItem("mnemos_api_token");
+  }
 
   const projects = useMemo(
     () => Object.values(projectsById).sort((a, b) => a.name.localeCompare(b.name)),
@@ -36,12 +48,20 @@ export default function CapturePage() {
   );
 
   async function submit() {
+    if (!apiToken.trim()) {
+      setError("Capture is protected. Paste your Mnemos API token first.");
+      return;
+    }
     setSaving(true);
     setResponse(null);
+    setError("");
     const project = projectId ? projectsById[projectId]?.slug : undefined;
     const res = await fetch("/api/capture/chat", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiToken.trim()}`
+      },
       body: JSON.stringify({
         title: title || undefined,
         text,
@@ -77,6 +97,20 @@ export default function CapturePage() {
           <span>mnemos ingestion</span>
         </div>
       </div>
+
+      <section className="bg-bg-1 border border-border rounded-lg px-4 py-3 mb-3">
+        <div className="flex items-center gap-3">
+          <KeyRound className="w-4 h-4 text-text-3" />
+          <input
+            value={apiToken}
+            onChange={(e) => saveApiToken(e.target.value)}
+            type="password"
+            placeholder="Mnemos API token for protected capture"
+            className="flex-1 bg-transparent outline-none text-xs placeholder-text-3"
+          />
+          <div className="text-[11px] text-text-4">{apiToken ? "unlocked" : "locked"}</div>
+        </div>
+      </section>
 
       <section className="bg-bg-1 border border-border rounded-lg p-5 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3 mb-3">
@@ -145,6 +179,8 @@ export default function CapturePage() {
           </button>
         </div>
       </section>
+
+      {error && <div className="mb-4 text-red-300 text-sm">{error}</div>}
 
       {response && (
         <section className="bg-bg-1 border border-border rounded-lg p-5">
