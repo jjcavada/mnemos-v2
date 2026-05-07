@@ -665,7 +665,7 @@ export async function upsertJournalMemory(input: {
   };
   if (embedding) payload.embedding = embedding;
 
-  const existing = existingRows?.[0] as Memory | undefined;
+  const existing = (existingRows?.[0] ?? null) as unknown as Memory | null;
   if (existing) {
     const { data, error } = await sb
       .from("memories")
@@ -674,7 +674,7 @@ export async function upsertJournalMemory(input: {
       .select(MEMORY_SELECT)
       .single();
     if (error) throw new Error(`Update journal failed: ${error.message}`);
-    return data as Memory;
+    return data as unknown as Memory;
   }
 
   const { data, error } = await sb
@@ -683,7 +683,7 @@ export async function upsertJournalMemory(input: {
     .select(MEMORY_SELECT)
     .single();
   if (error) throw new Error(`Insert journal failed: ${error.message}`);
-  return data as Memory;
+  return data as unknown as Memory;
 }
 
 export async function listEntities(): Promise<Entity[]> {
