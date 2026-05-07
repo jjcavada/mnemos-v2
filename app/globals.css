@@ -34,14 +34,13 @@
 @keyframes fadeIn { from{opacity:0;transform:translateY(4px);} to{opacity:1;transform:translateY(0);} }
 
 /* deep-space stage: subtle nebulae drifting on near-black */
+/* NOTE: do not set position here — JSX uses Tailwind `absolute inset-0`. Setting position would override it and collapse the element. */
 .graph-stage {
   background:
     radial-gradient(ellipse 60% 45% at 28% 22%, rgba(56,189,248,0.06), transparent 60%),
     radial-gradient(ellipse 55% 40% at 78% 70%, rgba(167,139,250,0.045), transparent 60%),
     radial-gradient(ellipse 40% 30% at 62% 30%, rgba(251,191,36,0.03), transparent 65%),
     radial-gradient(circle at 50% 55%, rgba(15,25,40,0.2), #03060c 75%);
-  position: relative;
-  overflow: hidden;
 }
 
 .graph-stage::before {
