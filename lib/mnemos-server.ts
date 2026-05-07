@@ -323,11 +323,10 @@ export async function resolveContext(
 
 /**
  * If the query matched a person/org entity that has a primary_project,
- * filter retrieved memories to only those that belong to that project OR
- * carry the entity slug in their entities[] array.
- *
- * Falls back to the unfiltered set if the strict filter would leave fewer
- * than 2 hits — better partial recall than "no results".
+ * filter retrieved memories to those that belong to that project OR carry
+ * the entity slug in entities[]. If the filtered set is shorter than k,
+ * pad with the highest-importance memories from the same project so the
+ * answer engine has enough context — never with off-project memories.
  */
 async function applyEntityScope(
   sb: SupabaseClient,
@@ -337,7 +336,6 @@ async function applyEntityScope(
 ): Promise<MemorySearchResult[]> {
   if (entities.length === 0) return pool.slice(0, k);
 
-  // collect primary_project slugs from entity metadata
   const projectSlugs = new Set<string>();
   const entitySlugs = new Set<string>();
   for (const e of entities) {
@@ -347,7 +345,6 @@ async function applyEntityScope(
     if (typeof primary === "string" && primary) projectSlugs.add(primary);
   }
 
-  // if no primary_project bindings, no scope filter to apply
   if (projectSlugs.size === 0) return pool.slice(0, k);
 
   // resolve project slugs -> project ids
@@ -357,15 +354,33 @@ async function applyEntityScope(
     .in("slug", Array.from(projectSlugs));
   const allowedProjectIds = new Set((projRows ?? []).map((p: { id: string }) => p.id));
 
-  const filtered = pool.filter(m => {
+  const inScope = pool.filter(m => {
     const inProject = m.project_id ? allowedProjectIds.has(m.project_id) : false;
     const taggedWithEntity = (m.entities ?? []).some(s => entitySlugs.has(String(s).toLowerCase()));
     return inProject || taggedWithEntity;
   });
 
-  // safety net: if strict filter leaves <2 hits, fall back to unfiltered
-  if (filtered.length < 2) return pool.slice(0, k);
-  return filtered.slice(0, k);
+  // safety net: only fall back to unfiltered if NO in-scope hits at all
+  if (inScope.length === 0) return pool.slice(0, k);
+
+  // pad to k with high-importance memories from the allowed project(s)
+  if (inScope.length < k && allowedProjectIds.size > 0) {
+    const existingIds = new Set(inScope.map(m => m.id));
+    const { data: more } = await sb
+      .from("memories")
+      .select(MEMORY_SELECT)
+      .in("project_id", Array.from(allowedProjectIds))
+      .eq("status", "active")
+      .order("importance_score", { ascending: false })
+      .limit(k * 2);
+    for (const row of (more ?? []) as unknown as MemorySearchResult[]) {
+      if (existingIds.has(row.id)) continue;
+      inScope.push(row);
+      if (inScope.length >= k) break;
+    }
+  }
+
+  return inScope.slice(0, k);
 }
 
 export async function buildContextPack(query: string, k = 10, filters: SearchFilters = {}): Promise<string> {
