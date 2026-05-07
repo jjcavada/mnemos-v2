@@ -111,17 +111,17 @@ export function Graph2D() {
     const groupKeys = Array.from(new Set(filtered.map(groupKeyOf)));
     const otherGroups = groupKeys.filter(k => k !== rootGroupKey);
 
-    // place each non-root group at its own angle around the root, at a healthy radius
-    const SATELLITE_RADIUS = 420;
+    // place each non-root group at its own angle around the root
+    const SATELLITE_RADIUS = 280;
     const groupCenter: Record<string, { gx: number; gy: number; localR: number }> = {};
-    if (rootGroupKey) groupCenter[rootGroupKey] = { gx: 0, gy: 0, localR: 110 };
+    if (rootGroupKey) groupCenter[rootGroupKey] = { gx: 0, gy: 0, localR: 70 };
     otherGroups.forEach((gk, i) => {
       // distribute around 320 degrees (leaving a gap at the bottom for the decorative orbital)
       const angle = (i / Math.max(otherGroups.length, 1)) * (Math.PI * 1.78) - Math.PI / 2 - 0.5;
       groupCenter[gk] = {
         gx: Math.cos(angle) * SATELLITE_RADIUS,
         gy: Math.sin(angle) * SATELLITE_RADIUS,
-        localR: 90
+        localR: 55
       };
     });
 
@@ -163,7 +163,7 @@ export function Graph2D() {
       };
     });
 
-    return { nodes, links, rootId: root?.id ?? null };
+    return { nodes, links, rootId: root?.id ?? null, groupCenter };
   }, [memories, relationships, projectsById, filters]);
 
   const graphData = useMemo(() => ({ nodes: data.nodes, links: data.links }), [data]);
@@ -179,13 +179,16 @@ export function Graph2D() {
     return m;
   }, [data]);
 
-  // gentle force tuning — short intra-cluster links, long cross-cluster links
+  // force tuning — short intra-cluster links, long cross-cluster links, custom cluster pull
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg || data.nodes.length === 0) return;
     try {
       const charge = typeof fg.d3Force === "function" ? fg.d3Force("charge") : null;
-      if (charge && typeof charge.strength === "function") charge.strength(-130).distanceMax?.(450);
+      if (charge && typeof charge.strength === "function") {
+        charge.strength(-95);
+        if (typeof charge.distanceMax === "function") charge.distanceMax(320);
+      }
       const link = typeof fg.d3Force === "function" ? fg.d3Force("link") : null;
       if (link && typeof link.distance === "function") {
         const groupMap = new Map(data.nodes.map(n => [n.id, n.groupKey]));
@@ -194,11 +197,24 @@ export function Graph2D() {
           const tId = typeof l.target === "object" ? l.target.id : l.target;
           const sg = groupMap.get(sId);
           const tg = groupMap.get(tId);
-          // same project/life-area: tight; cross-cluster: long bridge
-          return sg && tg && sg === tg ? 38 : 220;
+          return sg && tg && sg === tg ? 32 : 180;
         });
-        if (typeof link.strength === "function") link.strength(0.55);
+        if (typeof link.strength === "function") link.strength(0.6);
       }
+      // remove default centering force so groups don't all collapse to origin
+      if (typeof fg.d3Force === "function") fg.d3Force("center", null);
+      // custom cluster force: each tick, pull every node toward its group center
+      const clusterPull = (alpha: number) => {
+        const k = 0.08 * alpha;
+        for (const n of data.nodes as any[]) {
+          if (n.isRoot) continue;
+          const gc = data.groupCenter[n.groupKey];
+          if (!gc) continue;
+          n.vx = (n.vx ?? 0) + (gc.gx - (n.x ?? 0)) * k;
+          n.vy = (n.vy ?? 0) + (gc.gy - (n.y ?? 0)) * k;
+        }
+      };
+      if (typeof fg.d3Force === "function") fg.d3Force("cluster", clusterPull);
       if (typeof fg.d3ReheatSimulation === "function") fg.d3ReheatSimulation();
     } catch (err) {
       console.warn("[Graph2D] force tuning skipped:", err);
@@ -216,7 +232,7 @@ export function Graph2D() {
   function fitGraph(duration = 700) {
     const fg = fgRef.current;
     if (!fg) return;
-    fg.zoomToFit(duration, 180);
+    fg.zoomToFit(duration, 70);
   }
 
   useEffect(() => {
