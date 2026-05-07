@@ -1,40 +1,70 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Pencil } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import type { Journal } from "@/lib/types";
 
+const EMPTY_DRAFT = { win: "", lesson: "", followup: "", mood: "", energy: 7 };
+
 export default function JournalPage() {
   const [journals, setJournals] = useState<Journal[]>([]);
-  const [today, setToday] = useState<Journal | null>(null);
-  const [draft, setDraft] = useState({ win: "", lesson: "", followup: "", mood: "", energy: 7 });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingDate, setEditingDate] = useState<string>(todayStr());
+  const [draft, setDraft] = useState({ ...EMPTY_DRAFT });
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
-  const todayStr = new Date().toISOString().slice(0, 10);
+
+  function todayStr() {
+    return new Date().toISOString().slice(0, 10);
+  }
+  const today = todayStr();
+  const isEditingToday = editingDate === today;
 
   async function load() {
     const { data } = await sb.from("journals").select("*").order("date", { ascending: false }).limit(60);
-    const list = (data ?? []) as Journal[];
-    setJournals(list);
-    const t = list.find(j => j.date === todayStr);
-    if (t) {
-      setToday(t);
-      setDraft({ win: t.win ?? "", lesson: t.lesson ?? "", followup: t.followup ?? "", mood: t.mood ?? "", energy: t.energy ?? 7 });
-    }
+    setJournals((data ?? []) as Journal[]);
   }
   useEffect(() => { load(); }, []);
 
+  function startEdit(j: Journal) {
+    setEditingId(j.id);
+    setEditingDate(j.date);
+    setDraft({
+      win: j.win ?? "",
+      lesson: j.lesson ?? "",
+      followup: j.followup ?? "",
+      mood: j.mood ?? "",
+      energy: j.energy ?? 7
+    });
+    // scroll to top so the form is visible
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function startNewToday() {
+    setEditingId(null);
+    setEditingDate(today);
+    setDraft({ ...EMPTY_DRAFT });
+  }
+
   async function save() {
+    if (!draft.win.trim() && !draft.lesson.trim() && !draft.followup.trim()) return;
     setSaving(true);
-    const payload = { date: todayStr, ...draft };
-    if (today) {
-      await sb.from("journals").update(payload).eq("id", today.id);
+
+    const payload = { date: editingDate, ...draft };
+    if (editingId) {
+      await sb.from("journals").update(payload).eq("id", editingId);
     } else {
-      await sb.from("journals").insert(payload);
+      // check if a row already exists for this date (avoid duplicates)
+      const { data: existing } = await sb.from("journals").select("id").eq("date", editingDate).limit(1);
+      const existingId = (existing as Array<{ id: string }> | null)?.[0]?.id;
+      if (existingId) {
+        await sb.from("journals").update(payload).eq("id", existingId);
+      } else {
+        await sb.from("journals").insert(payload);
+      }
     }
 
-    // Also write/update a single memory so the AI can recall this journal day.
-    // /api/capture/journal is idempotent: one memory per date, re-saves update in place.
+    // Mirror to mnemos memory (idempotent per date)
     const lines: string[] = [];
     if (draft.win.trim())      lines.push(`Win: ${draft.win.trim()}`);
     if (draft.lesson.trim())   lines.push(`Lesson: ${draft.lesson.trim()}`);
@@ -49,40 +79,63 @@ export default function JournalPage() {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            date: todayStr,
+            date: editingDate,
             content,
-            summary: `Journal · ${todayStr}`,
+            summary: `Journal · ${editingDate}`,
             mood: draft.mood.trim() || null,
             energy: draft.energy ?? null,
             importance: 0.65
           })
         });
       } catch {
-        // non-blocking: journal still saved to journals table even if capture fails
+        // non-blocking
       }
     }
 
     await load();
+    // Clear the form back to a fresh "new for today" state
+    setDraft({ ...EMPTY_DRAFT });
+    setEditingId(null);
+    setEditingDate(today);
     setSaving(false);
     setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 2400);
+    setTimeout(() => setSavedFlash(false), 2600);
   }
 
   return (
     <div className="absolute inset-0 overflow-y-auto">
       <div className="sticky top-0 z-10 px-8 py-3" style={{ background: "rgba(5,5,5,0.78)", borderBottom: "0.5px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
         <div className="flex items-baseline justify-between max-w-[680px] mx-auto">
-          <span className="font-mono text-[10px] tracking-[0.32em] uppercase text-text-3">Journal · Today</span>
-          <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-text-4">{todayStr}</span>
+          <span className="font-mono text-[10px] tracking-[0.32em] uppercase text-text-3">
+            Journal · {isEditingToday ? "Today" : `Editing ${editingDate}`}
+          </span>
+          <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-text-4">{editingDate}</span>
         </div>
       </div>
 
       <div className="max-w-[680px] mx-auto px-8 pt-10 pb-16">
-        {/* today's entry — single bento */}
-        <section className="bento-card mb-10 spring-in">
+        {/* form for today or for a past entry being edited */}
+        <section className="bento-card mb-8 spring-in" style={!isEditingToday ? { borderColor: "rgba(229,229,229,0.32)" } : undefined}>
+          {!isEditingToday && (
+            <div className="mb-5 flex items-center justify-between gap-3 pb-3" style={{ borderBottom: "0.5px solid rgba(255,255,255,0.08)" }}>
+              <div className="flex items-center gap-2 text-[12px] text-text-2">
+                <Pencil className="w-3 h-3" />
+                Editing entry for <span className="font-mono uppercase tracking-wider text-text-1">{editingDate}</span>
+              </div>
+              <button
+                onClick={startNewToday}
+                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] text-text-3 hover:text-text-1 transition-colors"
+                style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.08)" }}
+              >
+                <ArrowLeft className="w-3 h-3" />
+                Back to today
+              </button>
+            </div>
+          )}
+
           <div className="space-y-6">
             <Field
-              label="A win from today"
+              label="A win from the day"
               value={draft.win}
               onChange={(v) => setDraft({ ...draft, win: v })}
               placeholder="something that worked, however small"
@@ -107,12 +160,14 @@ export default function JournalPage() {
                   value={draft.mood}
                   onChange={(e) => setDraft({ ...draft, mood: e.target.value })}
                   placeholder="focused · scattered · content"
-                  className="w-full px-3 py-2 text-[13px] outline-none rounded-md"
+                  className="w-full px-3 py-2 text-[13px] outline-none rounded-md text-text-1 placeholder-text-4"
                   style={{ background: "rgba(255,255,255,0.025)", border: "0.5px solid rgba(255,255,255,0.08)" }}
                 />
               </div>
               <div>
-                <label className="h-micro block mb-2">Energy <span className="text-text-1 ml-1">{draft.energy}<span className="text-text-4">/10</span></span></label>
+                <label className="h-micro block mb-2">
+                  Energy <span className="text-text-1 ml-1">{draft.energy}<span className="text-text-4">/10</span></span>
+                </label>
                 <input
                   type="range" min={1} max={10} value={draft.energy}
                   onChange={(e) => setDraft({ ...draft, energy: Number(e.target.value) })}
@@ -127,44 +182,55 @@ export default function JournalPage() {
                 {savedFlash ? (
                   <span className="inline-flex items-center gap-1.5 text-text-1">
                     <Check className="w-3 h-3" />
-                    Saved · also captured to Mnemos memory
+                    Saved · captured to mnemos
                   </span>
-                ) : today ? (
-                  <span className="text-text-4">existing entry · edits will overwrite</span>
                 ) : (
-                  <span className="text-text-4">new entry for today</span>
+                  <span className="text-text-4">
+                    {editingId ? "edits will overwrite this entry" : "click any past entry below to edit it"}
+                  </span>
                 )}
               </div>
               <button
                 onClick={save}
-                disabled={saving}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-[12px] font-medium disabled:opacity-50 transition-opacity"
+                disabled={saving || (!draft.win.trim() && !draft.lesson.trim() && !draft.followup.trim())}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-[12px] font-medium disabled:opacity-40 transition-opacity"
                 style={{ background: "rgba(229,229,229,0.92)", color: "#0a0a0a" }}
               >
                 {saving && <Loader2 className="w-3 h-3 animate-spin" />}
-                {saving ? "Saving" : today ? "Update entry" : "Save entry"}
+                {saving ? "Saving" : editingId ? "Update entry" : "Save entry"}
               </button>
             </div>
           </div>
         </section>
 
-        {/* recent entries — includes today so user sees save reflected */}
+        {/* recent entries — clickable to edit */}
         <div className="mb-3 flex items-baseline justify-between">
-          <span className="h-micro">Recent entries</span>
+          <span className="h-micro">Recent entries · click to edit</span>
           <span className="font-mono text-[10px] tracking-[0.16em] text-text-4 uppercase">{journals.length}</span>
         </div>
 
         <div className="space-y-2">
           {journals.map(j => {
-            const isToday = j.date === todayStr;
+            const isToday = j.date === today;
+            const active = editingId === j.id;
             return (
-              <div key={j.id} className="bento-tight" style={isToday ? { borderColor: "rgba(229,229,229,0.32)" } : undefined}>
+              <button
+                key={j.id}
+                onClick={() => startEdit(j)}
+                className="bento-tight w-full text-left transition-colors hover:bg-white/[0.04]"
+                style={active ? { borderColor: "rgba(229,229,229,0.45)" } : isToday ? { borderColor: "rgba(229,229,229,0.20)" } : undefined}
+              >
                 <div className="flex items-baseline justify-between mb-2">
                   <div className="flex items-baseline gap-2">
                     <div className="font-mono text-[11px] tracking-wider uppercase text-text-2">{j.date}</div>
                     {isToday && (
                       <span className="font-mono text-[9px] tracking-[0.22em] uppercase px-1.5 py-0.5 rounded" style={{ background: "rgba(229,229,229,0.12)", color: "#F4F4F5" }}>
                         today
+                      </span>
+                    )}
+                    {active && (
+                      <span className="font-mono text-[9px] tracking-[0.22em] uppercase px-1.5 py-0.5 rounded" style={{ background: "rgba(229,229,229,0.18)", color: "#F4F4F5" }}>
+                        editing
                       </span>
                     )}
                   </div>
@@ -177,7 +243,7 @@ export default function JournalPage() {
                   {j.lesson && <div className="text-text-2"><span className="h-micro mr-2">Lesson</span>{j.lesson}</div>}
                   {j.followup && <div className="text-text-2"><span className="h-micro mr-2">Followup</span>{j.followup}</div>}
                 </div>
-              </div>
+              </button>
             );
           })}
           {journals.length === 0 && (
@@ -198,7 +264,7 @@ function Field({ label, value, onChange, placeholder }: { label: string; value: 
         onChange={(e) => onChange(e.target.value)}
         rows={2}
         placeholder={placeholder}
-        className="w-full px-3 py-2.5 text-[14px] leading-relaxed outline-none rounded-md resize-none placeholder-text-4"
+        className="w-full px-3 py-2.5 text-[14px] leading-relaxed outline-none rounded-md resize-none placeholder-text-4 text-text-1"
         style={{ background: "rgba(255,255,255,0.025)", border: "0.5px solid rgba(255,255,255,0.08)", letterSpacing: "0.001em" }}
       />
     </div>
