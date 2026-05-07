@@ -14,8 +14,8 @@ type Node = {
   size: number;
   x: number;
   y: number;
-  fx: number;
-  fy: number;
+  fx?: number;
+  fy?: number;
   mem: Memory;
 };
 type Link = { source: string; target: string; relation: string };
@@ -72,8 +72,6 @@ export function Graph2D() {
         size: 4 + Math.sqrt(connCount[m.id] ?? 0) * 1.35 + (m.importance_score ?? 0.5),
         x,
         y,
-        fx: x,
-        fy: y,
         mem: m
       };
     });
@@ -118,10 +116,20 @@ export function Graph2D() {
         graphData={data}
         backgroundColor="#020407"
         nodeRelSize={1}
-        warmupTicks={80}
-        cooldownTicks={90}
-        cooldownTime={4000}
-        d3VelocityDecay={0.22}
+        warmupTicks={140}
+        cooldownTicks={400}
+        cooldownTime={15000}
+        d3VelocityDecay={0.32}
+        d3AlphaDecay={0.018}
+        enableNodeDrag={true}
+        onNodeDrag={(node: any) => {
+          node.fx = node.x;
+          node.fy = node.y;
+        }}
+        onNodeDragEnd={(node: any) => {
+          node.fx = node.x;
+          node.fy = node.y;
+        }}
         onEngineStop={() => fitGraph(500)}
         linkColor={(l: any) => {
           const focus = selectedId ?? hovered;
@@ -243,8 +251,13 @@ export function Graph2D() {
           fgRef.current?.zoom(Math.max(fgRef.current?.zoom() ?? 1, 2.4), 700);
           select(n.mem);
         }}
+        onNodeRightClick={(n: any) => {
+          n.fx = null;
+          n.fy = null;
+        }}
         onNodeHover={(n: any) => setHovered(n?.id ?? null)}
         onBackgroundClick={() => { setSelectedId(null); fitGraph(700); }}
+        onBackgroundRightClick={() => fitGraph(700)}
       />
     </div>
   );
