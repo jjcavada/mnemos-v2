@@ -33,7 +33,7 @@ export function Sidebar() {
   }, [memories]);
 
   return (
-    <aside className="absolute top-[56px] left-0 bottom-0 w-[260px] bg-bg-1 border-r border-border z-10 overflow-y-auto px-4 py-5">
+    <aside className="absolute top-[56px] left-0 bottom-0 w-[260px] bg-black/72 border-r border-cyan-300/15 z-10 overflow-y-auto px-3 py-4 backdrop-blur">
       {/* SPACES */}
       <div className="mb-5">
         <div className="h-section mb-2">Spaces</div>
@@ -41,7 +41,7 @@ export function Sidebar() {
           <button
             onClick={() => toggleSpace("life")}
             className={`flex items-center justify-between w-full px-2.5 py-1.5 rounded-md text-[13px] transition-colors ${
-              filters.showLife ? "bg-bg-3 text-text-1" : "text-text-3 hover:bg-bg-2"
+              filters.showLife ? "bg-white/[0.06] text-text-1 border border-cyan-300/15" : "text-text-3 hover:bg-white/[0.04]"
             }`}
           >
             <span className="flex items-center gap-2">
@@ -53,7 +53,7 @@ export function Sidebar() {
           <button
             onClick={() => toggleSpace("projects")}
             className={`flex items-center justify-between w-full px-2.5 py-1.5 rounded-md text-[13px] transition-colors ${
-              filters.showProjects ? "bg-bg-3 text-text-1" : "text-text-3 hover:bg-bg-2"
+              filters.showProjects ? "bg-white/[0.06] text-text-1 border border-cyan-300/15" : "text-text-3 hover:bg-white/[0.04]"
             }`}
           >
             <span className="flex items-center gap-2">

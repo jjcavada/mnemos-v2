@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { requireApiToken } from "@/lib/api-auth";
 import { envReport, exportArchive } from "@/lib/mnemos-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const unauthorized = requireApiToken(req);
+  if (unauthorized) return unauthorized;
+
   try {
     const url = new URL(req.url);
     const format = url.searchParams.get("format") === "jsonl" ? "jsonl" : "bundle";

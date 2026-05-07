@@ -1,6 +1,6 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useMemo, useRef, useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMemoriesStore, applyFilters } from "@/store/memories";
 import { memoryColor, RELATION_EDGE_COLORS, ANIMATED_RELATIONS } from "@/lib/colors";
 import type { Memory } from "@/lib/types";
@@ -25,15 +25,15 @@ export function Graph2D() {
 
     const connCount: Record<string, number> = {};
     links.forEach(l => {
-      connCount[l.source as string] = (connCount[l.source as string] ?? 0) + 1;
-      connCount[l.target as string] = (connCount[l.target as string] ?? 0) + 1;
+      connCount[l.source] = (connCount[l.source] ?? 0) + 1;
+      connCount[l.target] = (connCount[l.target] ?? 0) + 1;
     });
 
     const nodes: Node[] = filtered.map(m => ({
       id: m.id,
       label: m.summary || m.content.slice(0, 60),
       color: memoryColor(m, projectsById),
-      size: 2.8 + Math.sqrt(connCount[m.id] ?? 0) * 1.0,
+      size: 3.2 + Math.sqrt(connCount[m.id] ?? 0) * 1.4 + (m.importance_score ?? 0.5),
       mem: m
     }));
     return { nodes, links };
@@ -59,7 +59,7 @@ export function Graph2D() {
   }
 
   useEffect(() => {
-    const t = setTimeout(() => fgRef.current?.zoomToFit(800, 80), 800);
+    const t = setTimeout(() => fgRef.current?.zoomToFit(900, 90), 900);
     return () => clearTimeout(t);
   }, [data]);
 
@@ -68,89 +68,130 @@ export function Graph2D() {
       <ForceGraph2D
         ref={fgRef as any}
         graphData={data}
-        backgroundColor="#08080a"
+        backgroundColor="#020407"
         nodeRelSize={1}
+        cooldownTicks={90}
+        d3VelocityDecay={0.22}
         linkColor={(l: any) => {
           const focus = selectedId ?? hovered;
-          if (!focus) return "rgba(74,74,82,0.35)";
+          if (!focus) return "rgba(125,211,252,0.18)";
           const sId = typeof l.source === "object" ? l.source.id : l.source;
           const tId = typeof l.target === "object" ? l.target.id : l.target;
           if (sId === focus || tId === focus) return RELATION_EDGE_COLORS[l.relation] ?? "#a8a8b1";
-          return "rgba(58,58,67,0.10)";
+          return "rgba(70,80,95,0.09)";
         }}
         linkWidth={(l: any) => {
           const focus = selectedId ?? hovered;
-          if (!focus) return 0.7;
+          if (!focus) return 0.6;
           const sId = typeof l.source === "object" ? l.source.id : l.source;
           const tId = typeof l.target === "object" ? l.target.id : l.target;
-          return (sId === focus || tId === focus) ? 1.6 : 0.7;
+          return (sId === focus || tId === focus) ? 1.9 : 0.45;
         }}
         linkDirectionalParticles={(l: any) => {
           const focus = selectedId ?? hovered;
-          if (!focus) return 0;
+          if (!focus) return ANIMATED_RELATIONS.has(l.relation) ? 1 : 0;
           const sId = typeof l.source === "object" ? l.source.id : l.source;
           const tId = typeof l.target === "object" ? l.target.id : l.target;
-          if ((sId === focus || tId === focus) && ANIMATED_RELATIONS.has(l.relation)) return 3;
+          if ((sId === focus || tId === focus) && ANIMATED_RELATIONS.has(l.relation)) return 4;
           return 0;
         }}
-        linkDirectionalParticleSpeed={0.006}
-        linkDirectionalParticleWidth={2}
-        linkDirectionalParticleColor={(l: any) => RELATION_EDGE_COLORS[l.relation] ?? "#818cf8"}
-        nodeCanvasObject={(node: any, ctx, scale) => {
+        linkDirectionalParticleSpeed={0.005}
+        linkDirectionalParticleWidth={1.8}
+        linkDirectionalParticleColor={(l: any) => RELATION_EDGE_COLORS[l.relation] ?? "#67e8f9"}
+        onRenderFramePre={(ctx: CanvasRenderingContext2D, scale: number) => {
+          const w = ctx.canvas.width;
+          const h = ctx.canvas.height;
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.strokeStyle = "rgba(125,211,252,0.05)";
+          ctx.lineWidth = 1;
+          for (let r = 160; r < Math.max(w, h); r += 170) {
+            ctx.beginPath();
+            ctx.arc(w * 0.48, h * 0.54, r, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          ctx.fillStyle = "rgba(255,255,255,0.35)";
+          for (let i = 0; i < 80; i++) {
+            const x = (i * 97) % w;
+            const y = (i * 193) % h;
+            ctx.globalAlpha = 0.08 + ((i % 7) / 35);
+            ctx.fillRect(x, y, 1, 1);
+          }
+          ctx.restore();
+        }}
+        nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, scale: number) => {
           const r = node.size;
           const focus = focusOf(node.id);
           const dimmed = focus === "dim";
-          ctx.globalAlpha = dimmed ? 0.18 : 1;
+          const isSelected = focus === "selected" && selectedId === node.id;
 
-          if (focus === "selected" && selectedId === node.id) {
-            const grad = ctx.createRadialGradient(node.x, node.y, r, node.x, node.y, r * 5);
-            grad.addColorStop(0, node.color + "55");
-            grad.addColorStop(1, node.color + "00");
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(node.x, node.y, r * 5, 0, 2 * Math.PI);
-            ctx.fill();
-          }
+          ctx.save();
+          ctx.globalAlpha = dimmed ? 0.16 : 1;
 
-          ctx.fillStyle = focus === "selected" && selectedId === node.id ? "#ffffff" : (dimmed ? "#3a3a43" : node.color);
+          ctx.globalCompositeOperation = "lighter";
+          const glow = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, r * (isSelected ? 9 : 5));
+          glow.addColorStop(0, `${node.color}77`);
+          glow.addColorStop(0.35, `${node.color}22`);
+          glow.addColorStop(1, `${node.color}00`);
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, r * (isSelected ? 9 : 5), 0, 2 * Math.PI);
+          ctx.fill();
+
+          ctx.globalCompositeOperation = "source-over";
+          ctx.strokeStyle = isSelected ? "#ffffff" : `${node.color}cc`;
+          ctx.lineWidth = (isSelected ? 1.7 : 0.7) / scale;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, r * (isSelected ? 2.4 : 1.8), 0, 2 * Math.PI);
+          ctx.stroke();
+
+          ctx.fillStyle = isSelected ? "#ffffff" : dimmed ? "#3a3a43" : node.color;
           ctx.beginPath();
           ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
           ctx.fill();
 
-          if (focus === "neighbor") {
-            ctx.strokeStyle = node.color;
+          if (focus === "neighbor" || isSelected) {
+            ctx.strokeStyle = isSelected ? "#fef3c7" : node.color;
             ctx.lineWidth = 1.2 / scale;
+            ctx.beginPath();
+            ctx.moveTo(node.x - r * 2.6, node.y);
+            ctx.lineTo(node.x - r * 1.3, node.y);
+            ctx.moveTo(node.x + r * 1.3, node.y);
+            ctx.lineTo(node.x + r * 2.6, node.y);
+            ctx.moveTo(node.x, node.y - r * 2.6);
+            ctx.lineTo(node.x, node.y - r * 1.3);
+            ctx.moveTo(node.x, node.y + r * 1.3);
+            ctx.lineTo(node.x, node.y + r * 2.6);
             ctx.stroke();
           }
 
-          ctx.globalAlpha = 1;
-
-          const showLabel = focus === "selected" || focus === "neighbor" || hovered === node.id || scale > 2.2;
+          const showLabel = isSelected || focus === "neighbor" || hovered === node.id || scale > 2.35;
           if (showLabel) {
-            const isSel = focus === "selected" && selectedId === node.id;
-            const fontSize = isSel ? Math.max(13 / scale, 4) : Math.max(10 / scale, 3);
-            ctx.font = (isSel ? "600 " : "500 ") + fontSize + "px Inter, sans-serif";
+            const fontSize = isSelected ? Math.max(13 / scale, 4) : Math.max(10 / scale, 3);
+            ctx.font = `${isSelected ? "700" : "600"} ${fontSize}px JetBrains Mono, Inter, sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "top";
-            ctx.fillStyle = isSel ? "#ffffff" : focus === "neighbor" ? "#e5e5e5" : "rgba(168,168,177,0.7)";
-            const label = node.label.length > 38 ? node.label.slice(0, 38) + "…" : node.label;
-            ctx.fillText(label, node.x, node.y + r + 3);
+            ctx.fillStyle = isSelected ? "#ffffff" : "rgba(207,250,254,0.78)";
+            const label = node.label.length > 42 ? `${node.label.slice(0, 42)}...` : node.label;
+            ctx.fillText(label, node.x, node.y + r + 5);
           }
+
+          ctx.restore();
         }}
-        nodePointerAreaPaint={(node: any, color, ctx) => {
+        nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
           ctx.fillStyle = color;
           ctx.beginPath();
-          ctx.arc(node.x, node.y, Math.max(node.size, 6), 0, 2 * Math.PI);
+          ctx.arc(node.x, node.y, Math.max(node.size, 8), 0, 2 * Math.PI);
           ctx.fill();
         }}
         onNodeClick={(n: any) => {
           setSelectedId(n.id);
-          fgRef.current?.centerAt(n.x, n.y, 600);
-          fgRef.current?.zoom(Math.max(fgRef.current?.zoom() ?? 1, 2.2), 600);
+          fgRef.current?.centerAt(n.x, n.y, 700);
+          fgRef.current?.zoom(Math.max(fgRef.current?.zoom() ?? 1, 2.4), 700);
           select(n.mem);
         }}
         onNodeHover={(n: any) => setHovered(n?.id ?? null)}
-        onBackgroundClick={() => { setSelectedId(null); fgRef.current?.zoomToFit(600, 80); }}
+        onBackgroundClick={() => { setSelectedId(null); fgRef.current?.zoomToFit(700, 90); }}
       />
     </div>
   );

@@ -28,13 +28,14 @@ export function Graph3D() {
       <ForceGraph3D
         ref={ref as any}
         graphData={data}
-        backgroundColor="#08080a"
+        backgroundColor="#020407"
         nodeColor={(n: any) => n.color}
         nodeLabel={(n: any) => n.label}
-        linkColor={(l: any) => RELATION_EDGE_COLORS[l.relation] ?? "rgba(120,120,128,0.4)"}
-        linkOpacity={0.5}
-        linkDirectionalParticles={1}
-        linkDirectionalParticleWidth={1.5}
+        linkColor={(l: any) => RELATION_EDGE_COLORS[l.relation] ?? "rgba(125,211,252,0.45)"}
+        linkOpacity={0.62}
+        linkDirectionalParticles={2}
+        linkDirectionalParticleWidth={1.6}
+        nodeOpacity={0.96}
         onNodeClick={(n: any) => {
           const dist = 80;
           const distRatio = 1 + dist / Math.hypot(n.x, n.y, n.z);
