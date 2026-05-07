@@ -133,8 +133,10 @@ export function Graph2D() {
       };
     });
 
-    return { nodes, links, rootId: root?.id ?? null, maxTier: orphanTier };
+    return { nodes, links, rootId: root?.id ?? null };
   }, [memories, relationships, projectsById, filters]);
+
+  const graphData = useMemo(() => ({ nodes: data.nodes, links: data.links }), [data]);
 
   const neighborMap = useMemo(() => {
     const m: Record<string, Set<string>> = {};
@@ -147,22 +149,28 @@ export function Graph2D() {
     return m;
   }, [data]);
 
-  // configure d3 forces once the simulation exists
+  // gentle force tuning — wrapped defensively so a bad runtime API doesn't kill the whole graph
   useEffect(() => {
     const fg = fgRef.current;
-    if (!fg) return;
-    const charge = fg.d3Force("charge");
-    if (charge) charge.strength(-180).distanceMax(700);
-    const link = fg.d3Force("link");
-    if (link) link.distance((l: any) => {
-      const sId = typeof l.source === "object" ? l.source.id : l.source;
-      const tId = typeof l.target === "object" ? l.target.id : l.target;
-      const a = data.nodes.find(n => n.id === sId)?.tier ?? 0;
-      const b = data.nodes.find(n => n.id === tId)?.tier ?? 0;
-      return 60 + Math.abs(a - b) * 40;
-    }).strength(0.55);
-    fg.d3Force("center", null);
-    fg.d3ReheatSimulation();
+    if (!fg || data.nodes.length === 0) return;
+    try {
+      const charge = typeof fg.d3Force === "function" ? fg.d3Force("charge") : null;
+      if (charge && typeof charge.strength === "function") charge.strength(-160);
+      const link = typeof fg.d3Force === "function" ? fg.d3Force("link") : null;
+      if (link && typeof link.distance === "function") {
+        const tierMap = new Map(data.nodes.map(n => [n.id, n.tier]));
+        link.distance((l: any) => {
+          const sId = typeof l.source === "object" ? l.source.id : l.source;
+          const tId = typeof l.target === "object" ? l.target.id : l.target;
+          const aT = tierMap.get(sId) ?? 0;
+          const bT = tierMap.get(tId) ?? 0;
+          return 70 + Math.abs(aT - bT) * 50;
+        });
+      }
+      if (typeof fg.d3ReheatSimulation === "function") fg.d3ReheatSimulation();
+    } catch (err) {
+      console.warn("[Graph2D] force tuning skipped:", err);
+    }
   }, [data]);
 
   function focusOf(id: string): "selected" | "neighbor" | "dim" | "normal" {
@@ -220,7 +228,7 @@ export function Graph2D() {
     <div className="absolute inset-0">
       <ForceGraph2D
         ref={fgRef as any}
-        graphData={data}
+        graphData={graphData}
         backgroundColor="#03060c"
         nodeRelSize={1}
         warmupTicks={140}
