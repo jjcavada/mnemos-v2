@@ -103,8 +103,19 @@ export function EntityDrawer({
   }
 
   return (
-    <div className="fixed top-[56px] right-0 bottom-0 w-[480px] bg-bg-1 border-l border-border z-30 overflow-y-auto fade-in">
-      <div className="sticky top-0 bg-bg-1 border-b border-border px-5 py-4 flex items-start justify-between gap-3 z-10">
+    <>
+      <div
+        className="fixed top-[44px] right-[480px] left-[40px] bottom-0 z-20 fade-in"
+        style={{ background: "rgba(5, 5, 5, 0.55)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)", pointerEvents: "none" }}
+      />
+      <div
+        className="fixed top-[44px] right-0 bottom-0 w-[480px] z-30 overflow-y-auto drawer-in"
+        style={{ background: "rgba(8, 8, 8, 0.94)", borderLeft: "0.5px solid rgba(255,255,255,0.10)", backdropFilter: "blur(40px)", WebkitBackdropFilter: "blur(40px)", boxShadow: "-12px 0 48px rgba(0,0,0,0.6)" }}
+      >
+      <div
+        className="sticky top-0 px-5 py-4 flex items-start justify-between gap-3 z-10"
+        style={{ background: "rgba(8, 8, 8, 0.94)", borderBottom: "0.5px solid rgba(255,255,255,0.06)", backdropFilter: "blur(40px)", WebkitBackdropFilter: "blur(40px)" }}
+      >
         <div className="flex-1 min-w-0">
           <div className="text-[11px] text-text-3 mb-1.5">
             {target.mode === "create" ? "New entity" : "Editing entity"}
@@ -271,6 +282,7 @@ export function EntityDrawer({
         )}
       </div>
     </div>
+    </>
   );
 }
 
