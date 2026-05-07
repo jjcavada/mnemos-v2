@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchEntityDetail, upsertEntity } from "@/lib/mnemos-server";
 import { coerceEntityKind, slugify } from "@/lib/mnemos-schema";
-import { requireApiToken } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,18 +8,12 @@ export const dynamic = "force-dynamic";
 type Params = { params: Promise<{ slug: string }> };
 
 export async function GET(req: Request, ctx: Params) {
-  const unauthorized = requireApiToken(req);
-  if (unauthorized) return unauthorized;
-
   const { slug } = await ctx.params;
   const detail = await fetchEntityDetail(slug);
   return NextResponse.json({ ok: true, entity: detail.entity, memories: detail.memories, mention_count: detail.memories.length });
 }
 
 export async function PUT(req: Request, ctx: Params) {
-  const unauthorized = requireApiToken(req);
-  if (unauthorized) return unauthorized;
-
   const { slug: rawSlug } = await ctx.params;
   const slug = slugify(rawSlug);
   if (!slug) return NextResponse.json({ ok: false, error: "Invalid slug" }, { status: 400 });

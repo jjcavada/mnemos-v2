@@ -1,23 +1,16 @@
 import { NextResponse } from "next/server";
 import { listEntities, upsertEntity } from "@/lib/mnemos-server";
 import { coerceEntityKind, slugify } from "@/lib/mnemos-schema";
-import { requireApiToken } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const unauthorized = requireApiToken(req);
-  if (unauthorized) return unauthorized;
-
   const entities = await listEntities();
   return NextResponse.json({ ok: true, entities });
 }
 
 export async function POST(req: Request) {
-  const unauthorized = requireApiToken(req);
-  if (unauthorized) return unauthorized;
-
   try {
     const body = await req.json() as {
       slug?: string;
