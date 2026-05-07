@@ -7,7 +7,15 @@ import type { Memory } from "@/lib/types";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
-type Node = { id: string; label: string; color: string; size: number; mem: Memory };
+type Node = {
+  id: string;
+  label: string;
+  color: string;
+  size: number;
+  x: number;
+  y: number;
+  mem: Memory;
+};
 type Link = { source: string; target: string; relation: string };
 
 export function Graph2D() {
@@ -29,13 +37,40 @@ export function Graph2D() {
       connCount[l.target] = (connCount[l.target] ?? 0) + 1;
     });
 
-    const nodes: Node[] = filtered.map(m => ({
-      id: m.id,
-      label: m.summary || m.content.slice(0, 60),
-      color: memoryColor(m, projectsById),
-      size: 3.2 + Math.sqrt(connCount[m.id] ?? 0) * 1.4 + (m.importance_score ?? 0.5),
-      mem: m
-    }));
+    const clusterKey = (m: Memory) => m.is_project
+      ? `project:${m.project_id ?? "unknown"}`
+      : `life:${m.life_area ?? "life"}`;
+    const clusters = Array.from(new Set(filtered.map(clusterKey))).sort();
+    const clusterIndex = new Map(clusters.map((key, index) => [key, index]));
+    const clusterCounts = filtered.reduce<Record<string, number>>((acc, m) => {
+      const key = clusterKey(m);
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+    const clusterSeen: Record<string, number> = {};
+
+    const nodes: Node[] = filtered.map((m, absoluteIndex) => {
+      const key = clusterKey(m);
+      const seen = clusterSeen[key] ?? 0;
+      clusterSeen[key] = seen + 1;
+      const count = clusterCounts[key] ?? 1;
+      const clusterAngle = ((clusterIndex.get(key) ?? 0) / Math.max(clusters.length, 1)) * Math.PI * 2 - Math.PI / 2;
+      const clusterRadius = clusters.length > 1 ? 250 : 0;
+      const clusterX = Math.cos(clusterAngle) * clusterRadius;
+      const clusterY = Math.sin(clusterAngle) * clusterRadius;
+      const localAngle = (seen / count) * Math.PI * 2 + (absoluteIndex % 3) * 0.18;
+      const localRadius = 28 + Math.sqrt(count) * 8 + (seen % 5) * 6;
+
+      return {
+        id: m.id,
+        label: m.summary || m.content.slice(0, 60),
+        color: memoryColor(m, projectsById),
+        size: 3.2 + Math.sqrt(connCount[m.id] ?? 0) * 1.4 + (m.importance_score ?? 0.5),
+        x: clusterX + Math.cos(localAngle) * localRadius,
+        y: clusterY + Math.sin(localAngle) * localRadius,
+        mem: m
+      };
+    });
     return { nodes, links };
   }, [memories, relationships, projectsById, filters]);
 
@@ -70,8 +105,11 @@ export function Graph2D() {
         graphData={data}
         backgroundColor="#020407"
         nodeRelSize={1}
+        warmupTicks={80}
         cooldownTicks={90}
+        cooldownTime={4000}
         d3VelocityDecay={0.22}
+        onEngineStop={() => fgRef.current?.zoomToFit(700, 120)}
         linkColor={(l: any) => {
           const focus = selectedId ?? hovered;
           if (!focus) return "rgba(125,211,252,0.18)";
@@ -120,6 +158,7 @@ export function Graph2D() {
           ctx.restore();
         }}
         nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, scale: number) => {
+          if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
           const r = node.size;
           const focus = focusOf(node.id);
           const dimmed = focus === "dim";
@@ -179,6 +218,7 @@ export function Graph2D() {
           ctx.restore();
         }}
         nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
+          if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
           ctx.fillStyle = color;
           ctx.beginPath();
           ctx.arc(node.x, node.y, Math.max(node.size, 8), 0, 2 * Math.PI);
