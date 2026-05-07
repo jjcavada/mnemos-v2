@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import { Brain, Check, Loader2, Save } from "lucide-react";
 import { useMemoriesStore } from "@/store/memories";
 import { MemoryDrawer } from "@/components/MemoryDrawer";
-import { AuthUnlock, useMnemosAuth } from "@/components/AuthUnlock";
 import type { Memory } from "@/lib/types";
 
 type CaptureResponse = {
@@ -22,7 +21,6 @@ type CaptureResponse = {
 
 export default function CapturePage() {
   const { projectsById, lifeAreas, refresh, select } = useMemoriesStore();
-  const auth = useMnemosAuth();
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [tags, setTags] = useState("");
@@ -39,10 +37,6 @@ export default function CapturePage() {
   );
 
   async function submit() {
-    if (!auth.authenticated) {
-      setError("Capture is protected. Unlock Mnemos first.");
-      return;
-    }
     setSaving(true);
     setResponse(null);
     setError("");
@@ -86,8 +80,6 @@ export default function CapturePage() {
           <span>mnemos ingestion</span>
         </div>
       </div>
-
-      <AuthUnlock auth={auth} lockedLabel="capture locked" />
 
       <section className="bg-bg-1 border border-border rounded-lg p-5 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3 mb-3">

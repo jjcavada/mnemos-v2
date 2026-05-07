@@ -3,7 +3,6 @@ import { useState } from "react";
 import { BrainCircuit, Download, FileText, Loader2, Search } from "lucide-react";
 import { useMemoriesStore } from "@/store/memories";
 import { MemoryDrawer } from "@/components/MemoryDrawer";
-import { AuthUnlock, useMnemosAuth } from "@/components/AuthUnlock";
 import type { Memory } from "@/lib/types";
 
 type SearchResponse = {
@@ -14,7 +13,6 @@ type SearchResponse = {
 
 export default function RecallPage() {
   const { select } = useMemoriesStore();
-  const auth = useMnemosAuth();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState<"search" | "context" | null>(null);
   const [results, setResults] = useState<SearchResponse["results"]>([]);
@@ -38,10 +36,6 @@ export default function RecallPage() {
   }
 
   async function buildContext() {
-    if (!auth.authenticated) {
-      setError("Context packs are protected. Unlock Mnemos first.");
-      return;
-    }
     setLoading("context");
     setError("");
     const res = await fetch("/api/context", {
@@ -56,10 +50,6 @@ export default function RecallPage() {
   }
 
   async function exportArchive() {
-    if (!auth.authenticated) {
-      setError("Export is protected. Unlock Mnemos first.");
-      return;
-    }
     setError("");
     const res = await fetch("/api/export", { credentials: "same-origin" });
     if (!res.ok) {
@@ -92,8 +82,6 @@ export default function RecallPage() {
           Export
         </button>
       </div>
-
-      <AuthUnlock auth={auth} lockedLabel="keyword search only" />
 
       <section className="bg-bg-1 border border-border rounded-lg p-4 mb-5">
         <div className="flex items-center gap-3">

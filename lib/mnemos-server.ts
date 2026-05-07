@@ -5,10 +5,11 @@ import {
   coerceLifeArea,
   coerceMemorySource,
   coerceMemoryType,
+  type EntityKind,
   normalizeTags,
   slugify
 } from "@/lib/mnemos-schema";
-import type { Memory, MemorySource, MemoryType, Project } from "@/lib/types";
+import type { Entity, Memory, MemorySource, MemoryType, Project } from "@/lib/types";
 
 type JsonObject = Record<string, unknown>;
 const MEMORY_SELECT = [
@@ -253,16 +254,24 @@ export async function buildContextPack(query: string, k = 10, filters: SearchFil
     .order("importance_score", { ascending: false })
     .limit(8);
 
-  return [
+  const entityHits = await relevantEntities(query, results);
+
+  const sections: string[] = [
     "# Mnemos Context Pack",
     "",
     `Query: ${query || "(general)"}`,
     `Generated: ${new Date().toISOString()}`,
     "",
     "## Jay Defaults",
-    ...((principles ?? []) as Memory[]).map(m => `- ${m.summary || m.content.slice(0, 180)}`),
-    "",
-    "## Relevant Memories",
+    ...((principles ?? []) as Memory[]).map(m => `- ${m.summary || m.content.slice(0, 180)}`)
+  ];
+
+  if (entityHits.length) {
+    sections.push("", "## People & Entities");
+    for (const e of entityHits) sections.push(...renderEntityForContext(e));
+  }
+
+  sections.push("", "## Relevant Memories",
     ...results.map((m, i) => [
       `${i + 1}. ${m.summary || m.content.slice(0, 180)}`,
       `   id: ${m.id}`,
@@ -270,7 +279,46 @@ export async function buildContextPack(query: string, k = 10, filters: SearchFil
       `   tags: ${(m.tags ?? []).join(", ") || "none"}`,
       `   content: ${m.content.slice(0, 700).replace(/\s+/g, " ")}`
     ].join("\n"))
-  ].join("\n");
+  );
+
+  return sections.join("\n");
+}
+
+async function relevantEntities(query: string, results: MemorySearchResult[]): Promise<Entity[]> {
+  const sb = serverSupabase();
+  const slugs = new Set<string>();
+  for (const m of results) {
+    for (const slug of m.entities ?? []) {
+      if (typeof slug === "string") slugs.add(slug.toLowerCase());
+    }
+  }
+  const { data } = await sb.from("entities").select("*").limit(500);
+  const all = (data ?? []) as Entity[];
+  const haystack = query.toLowerCase();
+  return all.filter(e => slugs.has(e.slug) || (haystack && (haystack.includes(e.slug.replace(/-/g, " ")) || haystack.includes(e.name.toLowerCase()))));
+}
+
+function renderEntityForContext(e: Entity): string[] {
+  const meta = (e.metadata ?? {}) as Record<string, unknown>;
+  const lines: string[] = [`### ${e.name} (${e.kind})`];
+  if (typeof meta.role === "string" && meta.role) lines.push(`- role: ${meta.role}`);
+  if (typeof meta.status === "string" && meta.status) lines.push(`- status: ${meta.status}`);
+  if (Array.isArray(meta.aliases) && meta.aliases.length) lines.push(`- aliases: ${meta.aliases.join(", ")}`);
+  if (typeof meta.description === "string" && meta.description) lines.push(`- description: ${meta.description}`);
+  if (typeof meta.notes === "string" && meta.notes) lines.push(`- notes: ${meta.notes}`);
+  if (meta.links && typeof meta.links === "object") {
+    for (const [k, v] of Object.entries(meta.links as Record<string, unknown>)) {
+      if (typeof v === "string" && v) lines.push(`- ${k}: ${v}`);
+    }
+  }
+  const reserved = new Set(["role", "status", "aliases", "description", "notes", "links"]);
+  for (const [k, v] of Object.entries(meta)) {
+    if (reserved.has(k)) continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      lines.push(`- ${k}: ${v}`);
+    }
+  }
+  return lines;
 }
 
 export async function exportArchive(format: "bundle" | "jsonl" = "bundle") {
@@ -338,6 +386,72 @@ export async function dailyDigest() {
     recent: ((recent ?? []) as Memory[]).map(compactMemory),
     open_followups: ((open ?? []) as Memory[]).map(compactMemory)
   };
+}
+
+export type EntityDetail = {
+  entity: Entity | null;
+  memories: Memory[];
+};
+
+export async function listEntities(): Promise<Entity[]> {
+  const sb = serverSupabase();
+  const { data, error } = await sb.from("entities").select("*").order("name").limit(500);
+  if (error) throw new Error(`List entities failed: ${error.message}`);
+  return (data ?? []) as Entity[];
+}
+
+export async function fetchEntityDetail(rawSlug: string): Promise<EntityDetail> {
+  const sb = serverSupabase();
+  const slug = slugify(rawSlug);
+  if (!slug) return { entity: null, memories: [] };
+
+  const { data: entityRow } = await sb.from("entities").select("*").eq("slug", slug).maybeSingle();
+  const entity = (entityRow as Entity | null) ?? null;
+
+  const name = entity?.name ?? humanize(slug);
+  const ilike = `%${name}%`;
+  const slugSpaces = slug.replace(/-/g, " ");
+
+  const [byArrayRes, byTextRes] = await Promise.all([
+    sb.from("memories").select(MEMORY_SELECT).contains("entities", [slug]).order("created_at", { ascending: false }).limit(200),
+    sb.from("memories").select(MEMORY_SELECT).or(`content.ilike.${ilike},summary.ilike.${ilike},content.ilike.%${slugSpaces}%`).order("created_at", { ascending: false }).limit(200)
+  ]);
+
+  const seen = new Set<string>();
+  const memories: Memory[] = [];
+  for (const row of [...(byArrayRes.data ?? []), ...(byTextRes.data ?? [])] as unknown as Memory[]) {
+    if (!row?.id || seen.has(row.id)) continue;
+    seen.add(row.id);
+    memories.push(row);
+  }
+  memories.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  return { entity, memories: memories.slice(0, 80) };
+}
+
+export async function upsertEntity(input: {
+  slug: string;
+  name: string;
+  kind: EntityKind;
+  metadata: Record<string, unknown>;
+}): Promise<Entity> {
+  const sb = serverSupabase();
+  const row = {
+    slug: input.slug,
+    name: input.name,
+    kind: input.kind,
+    metadata: input.metadata
+  };
+  const { data, error } = await sb
+    .from("entities")
+    .upsert(row, { onConflict: "slug" })
+    .select("*")
+    .single();
+  if (error) throw new Error(`Save entity failed: ${error.message}`);
+  return data as Entity;
+}
+
+function humanize(slug: string) {
+  return slug.split("-").filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
 }
 
 async function insertMemory(sb: SupabaseClient, payload: JsonObject): Promise<string> {

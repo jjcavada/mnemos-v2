@@ -1,8 +1,11 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import type { Entity, Project } from "@/lib/types";
 import { useMemoriesStore } from "@/store/memories";
+import { MemoryDrawer } from "@/components/MemoryDrawer";
+import { EntityDrawer, type EntityDrawerSlug } from "@/components/EntityDrawer";
 
 type EntityKind = Entity["kind"];
 type AggregatedEntity = {
@@ -12,15 +15,22 @@ type AggregatedEntity = {
   mentions: number;
   ids: string[];
   sources: Set<string>;
+  metadata: Record<string, unknown>;
 };
 
 export default function PeoplePage() {
-  const { memories, projectsById, select } = useMemoriesStore();
+  const { memories, projectsById } = useMemoriesStore();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [filter, setFilter] = useState<string>("all");
+  const [target, setTarget] = useState<EntityDrawerSlug>(null);
+
+  async function loadEntities() {
+    const { data } = await sb.from("entities").select("*").order("name");
+    setEntities((data ?? []) as Entity[]);
+  }
 
   useEffect(() => {
-    sb.from("entities").select("*").order("name").then(({ data }) => setEntities((data ?? []) as Entity[]));
+    void loadEntities();
   }, []);
 
   const aggregated = useMemo(() => {
@@ -38,7 +48,8 @@ export default function PeoplePage() {
           kind: existing?.kind ?? kind,
           mentions: 0,
           ids: [],
-          sources: new Set()
+          sources: new Set(),
+          metadata: existing?.metadata ?? {}
         };
       }
       counts[key].mentions++;
@@ -78,8 +89,19 @@ export default function PeoplePage() {
 
   return (
     <div className="absolute inset-0 overflow-y-auto p-8">
-      <h1 className="text-2xl font-semibold mb-1">People & Entities</h1>
-      <p className="text-text-3 text-sm mb-6">People, places, books, tools - everything that recurs across your memories.</p>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold mb-1">People & Entities</h1>
+          <p className="text-text-3 text-sm">Click any card to add details so AI knows who/what they are.</p>
+        </div>
+        <button
+          onClick={() => setTarget({ mode: "create" })}
+          className="inline-flex items-center gap-2 px-3 py-2 bg-accent text-black rounded-lg text-xs font-semibold"
+        >
+          <Plus className="w-4 h-4" />
+          New entity
+        </button>
+      </div>
 
       <div className="flex gap-2 mb-6">
         {["all", "person", "place", "organization", "book", "tool", "concept"].map(k => (
@@ -92,36 +114,66 @@ export default function PeoplePage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-        {visible.map(v => (
-          <div key={v.slug} className="bg-bg-1 border border-border rounded-lg p-4">
-            <div className="text-text-1 font-semibold text-sm">{v.name}</div>
-            <div className="text-[11px] text-text-3 mt-1">
-              {v.kind} - {v.mentions} mention{v.mentions !== 1 ? "s" : ""}
-            </div>
-            <div className="text-[10px] text-text-4 mt-1">{Array.from(v.sources).join(", ")}</div>
-            <div className="mt-3 space-y-1">
-              {unique(v.ids).slice(0, 3).map(id => {
-                const m = memories.find(x => x.id === id);
-                if (!m) return null;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => select(m)}
-                    className="block w-full text-left text-[11px] text-text-3 hover:text-text-1 truncate"
-                  >- {m.summary || m.content.slice(0, 50)}</button>
-                );
-              })}
-              {unique(v.ids).length > 3 && <div className="text-[10px] text-text-4">+{unique(v.ids).length - 3} more</div>}
-            </div>
-          </div>
-        ))}
+        {visible.map(v => {
+          const description = typeof v.metadata?.description === "string" ? v.metadata.description : "";
+          const role = typeof v.metadata?.role === "string" ? v.metadata.role : "";
+          const hasDetails = Boolean(description || role);
+          return (
+            <button
+              key={v.slug}
+              onClick={() => setTarget({ mode: "edit", slug: v.slug })}
+              className="bg-bg-1 border border-border rounded-lg p-4 text-left hover:border-border-strong transition-colors"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-text-1 font-semibold text-sm truncate">{v.name}</div>
+                  <div className="text-[11px] text-text-3 mt-1">
+                    {v.kind} · {v.mentions} mention{v.mentions !== 1 ? "s" : ""}
+                    {role && <> · {role}</>}
+                  </div>
+                </div>
+                {hasDetails && <span className="text-[10px] text-accent">profiled</span>}
+              </div>
+              {description && (
+                <div className="text-[12px] text-text-2 mt-2 line-clamp-3">{description}</div>
+              )}
+              {!description && (
+                <div className="mt-3 space-y-1">
+                  {unique(v.ids).slice(0, 2).map(id => {
+                    const m = memories.find(x => x.id === id);
+                    if (!m) return null;
+                    return (
+                      <div key={id} className="text-[11px] text-text-3 truncate">
+                        - {m.summary || m.content.slice(0, 50)}
+                      </div>
+                    );
+                  })}
+                  {unique(v.ids).length > 2 && <div className="text-[10px] text-text-4">+{unique(v.ids).length - 2} more</div>}
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {visible.length === 0 && (
         <div className="text-text-3 text-sm py-12 text-center">
-          No matching entities yet. New capture runs will populate stronger entity links automatically.
+          No matching entities yet. Click <span className="text-accent">New entity</span> to add one manually, or capture more memories to populate links automatically.
         </div>
       )}
+
+      <EntityDrawer
+        target={target}
+        onClose={() => setTarget(null)}
+        onSaved={(saved) => {
+          setEntities(prev => {
+            const without = prev.filter(e => e.slug !== saved.slug);
+            return [...without, saved].sort((a, b) => a.name.localeCompare(b.name));
+          });
+          setTarget({ mode: "edit", slug: saved.slug });
+        }}
+      />
+      <MemoryDrawer />
     </div>
   );
 }

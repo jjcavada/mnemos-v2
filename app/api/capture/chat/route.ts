@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireApiToken } from "@/lib/api-auth";
 import { captureChat, envReport, type CaptureChatBody } from "@/lib/mnemos-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const unauthorized = requireApiToken(req);
-  if (unauthorized) return unauthorized;
-
   try {
     const body = await req.json() as CaptureChatBody;
     const result = await captureChat({ ...body, source: body.source ?? "claude-code" });
