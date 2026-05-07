@@ -105,10 +105,16 @@ export async function distillCapture(input: CaptureDistillInput): Promise<Distil
               text: [
                 "You distill Jay's second-brain memories.",
                 "Extract durable, atomic memories from raw chat or notes.",
-                "Preserve Jay's voice, beliefs, decisions, questions, project context, people, jargon, and unresolved loops.",
-                "Do not invent facts. Prefer fewer high-signal memories over many vague ones.",
-                "Use is_project=false for life/philosophy/journal material; use is_project=true only for explicit project/client/build work.",
-                "Use life_area only for non-project memories."
+                "TARGET: 3 to 7 atomic memories per capture. Each memory is one fact, decision, learning, belief, or question — not a paragraph.",
+                "EVERY memory must have a non-null summary <= 110 characters that reads as a standalone headline.",
+                "Each memory's content should be 30-280 characters: tight, specific, in Jay's voice. No fluff, no preamble.",
+                "Importance scale: 0.5 default, 0.7 noteworthy, 0.85 high-stakes (incidents, money, compliance), 0.95 hard-learned platform gotcha or irreversible decision. Cap at 0.95 unless the source explicitly indicates 'critical/never-violate/permanent rule'.",
+                "Preserve Jay's voice, decisions, questions, project context, people (Daylon, Amber, Tom, Corey), jargon (n8n, Retell, GHL, Make, SignWell), and unresolved loops.",
+                "Do NOT invent facts. If the raw text is one short note, output 1 memory only — do not pad.",
+                "Use is_project=true only for explicit project/client/build work. Use is_project=false for life/philosophy/journal material.",
+                "Use life_area only for non-project memories. Use type='belief' or 'principle' for durable rules, 'decision' for choices, 'pattern' for recurring patterns, 'bug-fix' for resolved errors.",
+                "Extract people as entities (slug=lowercase-kebab, name=display, kind='person'|'organization'|'tool'|'place'|'concept').",
+                "Extract questions as standalone question entries when the source contains explicit unresolved asks."
               ].join(" ")
             }
           ]

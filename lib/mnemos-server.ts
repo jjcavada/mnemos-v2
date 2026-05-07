@@ -288,10 +288,17 @@ export async function resolveContext(
   const widePool = Math.min(50, Math.max(k * 3, 24));
   const memories = await searchMemories(cleanQuery, widePool, filters);
   const tokens = queryTokens(cleanQuery);
-  const focused = focusMemories(memories, tokens).slice(0, k);
+  const initialFocused = focusMemories(memories, tokens);
 
-  const [entities, projects, principles] = await Promise.all([
-    matchEntitiesForQuery(sb, cleanQuery, tokens, focused),
+  // Match entities first so we can apply scope filter before final slice
+  const entities = await matchEntitiesForQuery(sb, cleanQuery, tokens, initialFocused);
+
+  // Strict entity-aware scope: if query maps to entity(ies) with primary_project,
+  // restrict retrieved memories to memories tied to that project OR with the
+  // entity slug in their entities[]. Avoids "what is amber's workflows" pulling UDT memories.
+  const focused = await applyEntityScope(sb, initialFocused, entities, k);
+
+  const [projects, principles] = await Promise.all([
     matchProjectsForQuery(sb, cleanQuery, tokens, focused),
     relevantPrinciples(sb, cleanQuery, tokens, focused)
   ]);
@@ -312,6 +319,53 @@ export async function resolveContext(
     principles,
     context_markdown
   };
+}
+
+/**
+ * If the query matched a person/org entity that has a primary_project,
+ * filter retrieved memories to only those that belong to that project OR
+ * carry the entity slug in their entities[] array.
+ *
+ * Falls back to the unfiltered set if the strict filter would leave fewer
+ * than 2 hits — better partial recall than "no results".
+ */
+async function applyEntityScope(
+  sb: SupabaseClient,
+  pool: MemorySearchResult[],
+  entities: Entity[],
+  k: number
+): Promise<MemorySearchResult[]> {
+  if (entities.length === 0) return pool.slice(0, k);
+
+  // collect primary_project slugs from entity metadata
+  const projectSlugs = new Set<string>();
+  const entitySlugs = new Set<string>();
+  for (const e of entities) {
+    entitySlugs.add(e.slug);
+    const meta = e.metadata as Record<string, unknown> | undefined;
+    const primary = meta?.primary_project;
+    if (typeof primary === "string" && primary) projectSlugs.add(primary);
+  }
+
+  // if no primary_project bindings, no scope filter to apply
+  if (projectSlugs.size === 0) return pool.slice(0, k);
+
+  // resolve project slugs -> project ids
+  const { data: projRows } = await sb
+    .from("projects")
+    .select("id, slug")
+    .in("slug", Array.from(projectSlugs));
+  const allowedProjectIds = new Set((projRows ?? []).map((p: { id: string }) => p.id));
+
+  const filtered = pool.filter(m => {
+    const inProject = m.project_id ? allowedProjectIds.has(m.project_id) : false;
+    const taggedWithEntity = (m.entities ?? []).some(s => entitySlugs.has(String(s).toLowerCase()));
+    return inProject || taggedWithEntity;
+  });
+
+  // safety net: if strict filter leaves <2 hits, fall back to unfiltered
+  if (filtered.length < 2) return pool.slice(0, k);
+  return filtered.slice(0, k);
 }
 
 export async function buildContextPack(query: string, k = 10, filters: SearchFilters = {}): Promise<string> {
