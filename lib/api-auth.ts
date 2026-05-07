@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 
-const SESSION_COOKIE = "mnemos_session";
+export const SESSION_COOKIE_NAME = "mnemos_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 export function hasValidApiToken(req: Request) {
@@ -35,7 +35,7 @@ export function appPasswordIsConfigured() {
 }
 
 export function setSessionCookie(res: NextResponse) {
-  res.cookies.set(SESSION_COOKIE, createSessionValue(), {
+  res.cookies.set(SESSION_COOKIE_NAME, createSessionValue(), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -45,7 +45,7 @@ export function setSessionCookie(res: NextResponse) {
 }
 
 export function clearSessionCookie(res: NextResponse) {
-  res.cookies.set(SESSION_COOKIE, "", {
+  res.cookies.set(SESSION_COOKIE_NAME, "", {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -55,7 +55,10 @@ export function clearSessionCookie(res: NextResponse) {
 }
 
 function hasValidSession(req: Request) {
-  const raw = cookieValue(req, SESSION_COOKIE);
+  return hasValidSessionValue(cookieValue(req, SESSION_COOKIE_NAME));
+}
+
+export function hasValidSessionValue(raw: string | undefined | null) {
   if (!raw) return false;
   const [expiresRaw, signature] = raw.split(".");
   const expires = Number(expiresRaw);

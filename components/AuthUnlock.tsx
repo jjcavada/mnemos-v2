@@ -10,13 +10,13 @@ export type MnemosAuth = {
   refresh: () => Promise<void>;
 };
 
-export function useMnemosAuth(): MnemosAuth {
-  const [authenticated, setAuthenticated] = useState(false);
-  const [checking, setChecking] = useState(true);
+export function useMnemosAuth(initialAuthenticated = false): MnemosAuth {
+  const [authenticated, setAuthenticated] = useState(initialAuthenticated);
+  const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
 
-  const refresh = useCallback(async () => {
-    setChecking(true);
+  const refresh = useCallback(async (showChecking = false) => {
+    if (showChecking) setChecking(true);
     setError("");
     try {
       const res = await fetch("/api/auth/status", { credentials: "same-origin" });
@@ -27,12 +27,12 @@ export function useMnemosAuth(): MnemosAuth {
       setAuthenticated(false);
       setError("Could not check Mnemos login.");
     } finally {
-      setChecking(false);
+      if (showChecking) setChecking(false);
     }
   }, []);
 
   useEffect(() => {
-    void refresh();
+    void refresh(false);
   }, [refresh]);
 
   async function login(password: string) {

@@ -4,8 +4,14 @@ import { Sidebar } from "@/components/Sidebar";
 import { MnemosLockScreen } from "@/components/MnemosLockScreen";
 import { useMnemosAuth } from "@/components/AuthUnlock";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const auth = useMnemosAuth();
+export function AppShell({
+  children,
+  initialAuthenticated = false
+}: {
+  children: React.ReactNode;
+  initialAuthenticated?: boolean;
+}) {
+  const auth = useMnemosAuth(initialAuthenticated);
 
   if (auth.checking && !auth.authenticated) {
     return (
