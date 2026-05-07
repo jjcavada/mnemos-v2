@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireApiToken } from "@/lib/api-auth";
 import { envReport, searchMemories, type SearchFilters } from "@/lib/mnemos-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const unauthorized = requireApiToken(req);
-  if (unauthorized) return unauthorized;
-
   try {
     const body = await req.json() as { query?: string; k?: number; filter?: SearchFilters };
     const query = typeof body.query === "string" ? body.query : "";

@@ -339,6 +339,93 @@ function normalizeEntities(input: unknown): DistilledEntity[] {
   return out.slice(0, 20);
 }
 
+export type AnswerComposition = {
+  answer: string;
+  followups: string[];
+  confidence: "high" | "medium" | "low";
+  missing: string | null;
+};
+
+export async function composeAnswer(query: string, contextMarkdown: string): Promise<AnswerComposition | null> {
+  const key = apiKey();
+  if (!key) return null;
+
+  const res = await fetch(`${OPENAI_API}/responses`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${key}`
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_DISTILL_MODEL || DEFAULT_DISTILL_MODEL,
+      input: [
+        {
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: [
+                "You are Mnemos, Jay's second-brain answer engine.",
+                "Use ONLY the provided memories, entity profiles, and project info to answer.",
+                "Do not invent facts. Do not extrapolate beyond the context.",
+                "Voice: peer-level technical, direct, no preamble, no apologies, no 'Based on the memories...'.",
+                "Length: 2 to 5 sentences in the answer field. Tight, dense, useful.",
+                "If the context partially answers, give the partial answer and put what's missing in the 'missing' field.",
+                "If the context does not answer at all, set confidence='low' and put a one-line description of what's missing.",
+                "followups: 2-4 specific follow-up questions Jay could ask Mnemos to drill deeper. Phrase as questions Jay would type, not generic prompts."
+              ].join(" ")
+            }
+          ]
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: `Question: ${query}\n\n${contextMarkdown}`
+            }
+          ]
+        }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "mnemos_answer",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              answer: { type: "string" },
+              confidence: { type: "string", enum: ["high", "medium", "low"] },
+              missing: { type: ["string", "null"] },
+              followups: { type: "array", items: { type: "string" } }
+            },
+            required: ["answer", "confidence", "missing", "followups"]
+          }
+        }
+      },
+      max_output_tokens: 800
+    })
+  });
+
+  if (!res.ok) return null;
+  try {
+    const json = await res.json();
+    const parsed = JSON.parse(extractOutputText(json));
+    return {
+      answer: typeof parsed.answer === "string" ? parsed.answer.trim() : "",
+      followups: Array.isArray(parsed.followups)
+        ? parsed.followups.filter((s: unknown): s is string => typeof s === "string").slice(0, 5)
+        : [],
+      confidence: parsed.confidence === "high" || parsed.confidence === "medium" ? parsed.confidence : "low",
+      missing: typeof parsed.missing === "string" && parsed.missing.trim() ? parsed.missing.trim() : null
+    };
+  } catch {
+    return null;
+  }
+}
+
 function extractOutputText(json: any): string {
   if (typeof json.output_text === "string") return json.output_text;
   const chunks: string[] = [];

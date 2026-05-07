@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { requireApiToken } from "@/lib/api-auth";
 import { fetchEntityDetail, upsertEntity } from "@/lib/mnemos-server";
 import { coerceEntityKind, slugify } from "@/lib/mnemos-schema";
 
@@ -15,9 +14,6 @@ export async function GET(_req: Request, ctx: Params) {
 }
 
 export async function PUT(req: Request, ctx: Params) {
-  const unauthorized = requireApiToken(req);
-  if (unauthorized) return unauthorized;
-
   const { slug: rawSlug } = await ctx.params;
   const slug = slugify(rawSlug);
   if (!slug) return NextResponse.json({ ok: false, error: "Invalid slug" }, { status: 400 });

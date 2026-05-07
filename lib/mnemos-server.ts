@@ -1,5 +1,13 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { createEmbedding, distillCapture, hasOpenAIKey, type DistilledCapture, type DistilledEntity } from "@/lib/openai-memory";
+import {
+  composeAnswer,
+  createEmbedding,
+  distillCapture,
+  hasOpenAIKey,
+  type AnswerComposition,
+  type DistilledCapture,
+  type DistilledEntity
+} from "@/lib/openai-memory";
 import {
   clampImportance,
   coerceLifeArea,
@@ -243,59 +251,280 @@ function mergeSearchRows(primary: MemorySearchResult[], fallback: MemorySearchRe
   return merged;
 }
 
-export async function buildContextPack(query: string, k = 10, filters: SearchFilters = {}) {
-  const results = await searchMemories(query, k, filters);
+export type ResolvedProject = Project & { memory_count: number };
+
+export type ResolvedContext = {
+  query: string;
+  memories: MemorySearchResult[];
+  entities: Entity[];
+  projects: ResolvedProject[];
+  principles: Memory[];
+  context_markdown: string;
+};
+
+export type ResolvedAnswer = ResolvedContext & {
+  answer: string | null;
+  followups: string[];
+  confidence: "high" | "medium" | "low";
+  missing: string | null;
+  generated_at: string;
+};
+
+const QUERY_STOP_WORDS = new Set([
+  "a","an","and","are","as","at","be","been","being","by","do","does","for",
+  "from","had","has","have","how","i","if","in","is","it","me","my","of",
+  "on","or","our","that","the","then","these","this","those","to","was","we",
+  "were","what","when","where","who","why","with","you","your","about","into","over"
+]);
+
+export async function resolveContext(
+  query: string,
+  k = 12,
+  filters: SearchFilters = {}
+): Promise<ResolvedContext> {
+  const cleanQuery = query.trim();
   const sb = serverSupabase();
-  const { data: principles } = await sb
+
+  const widePool = Math.min(50, Math.max(k * 3, 24));
+  const memories = await searchMemories(cleanQuery, widePool, filters);
+  const tokens = queryTokens(cleanQuery);
+  const focused = focusMemories(memories, tokens).slice(0, k);
+
+  const [entities, projects, principles] = await Promise.all([
+    matchEntitiesForQuery(sb, cleanQuery, tokens, focused),
+    matchProjectsForQuery(sb, cleanQuery, tokens, focused),
+    relevantPrinciples(sb, cleanQuery, tokens, focused)
+  ]);
+
+  const context_markdown = renderContextMarkdown({
+    query: cleanQuery,
+    memories: focused,
+    entities,
+    projects,
+    principles
+  });
+
+  return {
+    query: cleanQuery,
+    memories: focused,
+    entities,
+    projects,
+    principles,
+    context_markdown
+  };
+}
+
+export async function buildContextPack(query: string, k = 10, filters: SearchFilters = {}): Promise<string> {
+  const resolved = await resolveContext(query, k, filters);
+  return resolved.context_markdown;
+}
+
+export async function answerQuery(
+  query: string,
+  k = 12,
+  filters: SearchFilters = {}
+): Promise<ResolvedAnswer> {
+  const resolved = await resolveContext(query, k, filters);
+  let composition: AnswerComposition | null = null;
+  if (resolved.context_markdown && resolved.memories.length > 0) {
+    composition = await composeAnswer(query, resolved.context_markdown);
+  }
+
+  return {
+    ...resolved,
+    answer: composition?.answer ?? null,
+    followups: composition?.followups ?? [],
+    confidence: composition?.confidence ?? "low",
+    missing: composition?.missing ?? (resolved.memories.length === 0 ? "No memories matched this query." : null),
+    generated_at: new Date().toISOString()
+  };
+}
+
+function queryTokens(query: string): string[] {
+  return (query.toLowerCase().match(/[a-z0-9][a-z0-9'-]*/g) ?? [])
+    .filter(t => !QUERY_STOP_WORDS.has(t) && t.length > 1);
+}
+
+function focusMemories(memories: MemorySearchResult[], tokens: string[]): MemorySearchResult[] {
+  if (memories.length === 0 || tokens.length === 0) return memories.slice(0, 12);
+
+  const scored = memories.map((m, idx) => {
+    const hay = `${m.summary ?? ""} ${m.content} ${(m.tags ?? []).join(" ")} ${m.life_area ?? ""} ${(m.entities ?? []).join(" ")}`.toLowerCase();
+    let keywordHits = 0;
+    for (const t of tokens) if (hay.includes(t)) keywordHits++;
+    const rec = m as Record<string, unknown>;
+    const semantic = numberFrom(rec.fused_score) ?? numberFrom(rec.vector_score) ?? numberFrom(rec.score) ?? numberFrom(rec.similarity) ?? 0;
+    return { row: m, keywordHits, semantic, idx };
+  });
+
+  const anyKeywordMatch = scored.some(s => s.keywordHits > 0);
+  const filtered = anyKeywordMatch
+    ? scored.filter(s => s.keywordHits > 0)
+    : scored;
+
+  return filtered
+    .sort((a, b) =>
+      b.keywordHits - a.keywordHits ||
+      b.semantic - a.semantic ||
+      (b.row.importance_score ?? 0) - (a.row.importance_score ?? 0) ||
+      a.idx - b.idx
+    )
+    .map(s => s.row)
+    .slice(0, 12);
+}
+
+function numberFrom(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+async function matchEntitiesForQuery(
+  sb: SupabaseClient,
+  query: string,
+  tokens: string[],
+  results: MemorySearchResult[]
+): Promise<Entity[]> {
+  const haystack = query.toLowerCase();
+  const slugsInResults = new Set<string>();
+  for (const m of results) {
+    for (const slug of m.entities ?? []) {
+      if (typeof slug === "string") slugsInResults.add(slug.toLowerCase());
+    }
+  }
+
+  const { data } = await sb.from("entities").select("*").limit(500);
+  const all = (data ?? []) as Entity[];
+
+  const scored = all.map(e => {
+    const aliases = Array.isArray((e.metadata as Record<string, unknown> | undefined)?.aliases)
+      ? ((e.metadata as Record<string, unknown>).aliases as unknown[]).filter((s): s is string => typeof s === "string")
+      : [];
+    const surface = [e.name, e.slug.replace(/-/g, " "), ...aliases].map(s => s.toLowerCase());
+    const directHit = surface.some(s => s && haystack.includes(s));
+    const tokenHit = tokens.some(t => surface.some(s => s.includes(t)));
+    const inResults = slugsInResults.has(e.slug);
+    const score = (directHit ? 5 : 0) + (tokenHit ? 2 : 0) + (inResults ? 1 : 0);
+    return { e, score };
+  });
+
+  return scored
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(s => s.e)
+    .slice(0, 5);
+}
+
+async function matchProjectsForQuery(
+  sb: SupabaseClient,
+  query: string,
+  tokens: string[],
+  results: MemorySearchResult[]
+): Promise<ResolvedProject[]> {
+  const haystack = query.toLowerCase();
+  const { data } = await sb.from("projects").select("*").limit(200);
+  const all = (data ?? []) as Project[];
+
+  const counts = new Map<string, number>();
+  for (const m of results) {
+    if (m.project_id) counts.set(m.project_id, (counts.get(m.project_id) ?? 0) + 1);
+  }
+
+  const scored = all.map(p => {
+    const surface = [p.name.toLowerCase(), p.slug.replace(/-/g, " ")];
+    const directHit = surface.some(s => s && haystack.includes(s));
+    const tokenHit = tokens.some(t => surface.some(s => s.includes(t)));
+    const matches = counts.get(p.id) ?? 0;
+    const score = (directHit ? 5 : 0) + (tokenHit ? 2 : 0) + (matches >= 3 ? 2 : matches > 0 ? 1 : 0);
+    return { p, score, matches };
+  });
+
+  return scored
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score || b.matches - a.matches)
+    .slice(0, 3)
+    .map(s => ({ ...s.p, memory_count: s.matches }));
+}
+
+async function relevantPrinciples(
+  sb: SupabaseClient,
+  query: string,
+  tokens: string[],
+  results: MemorySearchResult[]
+): Promise<Memory[]> {
+  if (tokens.length === 0) return [];
+  const idsInResults = new Set(results.map(r => r.id));
+  const haystack = query.toLowerCase();
+
+  const { data } = await sb
     .from("memories")
     .select("*")
     .in("type", ["belief", "principle", "pattern"])
     .eq("status", "active")
     .order("importance_score", { ascending: false })
-    .limit(8);
+    .limit(40);
 
-  const entityHits = await relevantEntities(query, results);
+  const candidates = (data ?? []) as Memory[];
+  const filtered = candidates.filter(m => {
+    if (idsInResults.has(m.id)) return true;
+    const surface = `${m.summary ?? ""} ${m.content} ${(m.tags ?? []).join(" ")}`.toLowerCase();
+    if (haystack && surface.includes(haystack)) return true;
+    let hits = 0;
+    for (const t of tokens) if (surface.includes(t)) hits++;
+    return hits >= Math.max(1, Math.ceil(tokens.length * 0.34));
+  });
 
+  return filtered.slice(0, 4);
+}
+
+function renderContextMarkdown(input: {
+  query: string;
+  memories: MemorySearchResult[];
+  entities: Entity[];
+  projects: ResolvedProject[];
+  principles: Memory[];
+}): string {
   const sections: string[] = [
     "# Mnemos Context Pack",
     "",
-    `Query: ${query || "(general)"}`,
-    `Generated: ${new Date().toISOString()}`,
-    "",
-    "## Jay Defaults",
-    ...((principles ?? []) as Memory[]).map(m => `- ${m.summary || m.content.slice(0, 180)}`)
+    `Query: ${input.query || "(general)"}`,
+    `Generated: ${new Date().toISOString()}`
   ];
 
-  if (entityHits.length) {
+  if (input.entities.length) {
     sections.push("", "## People & Entities");
-    for (const e of entityHits) sections.push(...renderEntityForContext(e));
+    for (const e of input.entities) sections.push(...renderEntityForContext(e));
   }
 
-  sections.push("", "## Relevant Memories",
-    ...results.map((m, i) => [
-      `${i + 1}. ${m.summary || m.content.slice(0, 180)}`,
-      `   id: ${m.id}`,
-      `   type: ${m.type}; source: ${m.source}; created: ${m.created_at}`,
-      `   tags: ${(m.tags ?? []).join(", ") || "none"}`,
-      `   content: ${m.content.slice(0, 700).replace(/\s+/g, " ")}`
-    ].join("\n"))
-  );
-
-  return sections.join("\n");
-}
-
-async function relevantEntities(query: string, results: MemorySearchResult[]): Promise<Entity[]> {
-  const sb = serverSupabase();
-  const slugs = new Set<string>();
-  for (const m of results) {
-    for (const slug of m.entities ?? []) {
-      if (typeof slug === "string") slugs.add(slug.toLowerCase());
+  if (input.projects.length) {
+    sections.push("", "## Projects");
+    for (const p of input.projects) {
+      const desc = p.description ? ` - ${p.description}` : "";
+      sections.push(`- **${p.name}** (slug: ${p.slug}; ${p.memory_count} matching memories)${desc}`);
     }
   }
-  const { data } = await sb.from("entities").select("*").limit(500);
-  const all = (data ?? []) as Entity[];
-  const haystack = query.toLowerCase();
-  return all.filter(e => slugs.has(e.slug) || (haystack && (haystack.includes(e.slug.replace(/-/g, " ")) || haystack.includes(e.name.toLowerCase()))));
+
+  if (input.principles.length) {
+    sections.push("", "## Relevant Principles");
+    for (const m of input.principles) {
+      sections.push(`- ${m.summary || m.content.slice(0, 200)}`);
+    }
+  }
+
+  sections.push("", "## Relevant Memories");
+  if (input.memories.length === 0) {
+    sections.push("(none)");
+  } else {
+    input.memories.forEach((m, i) => {
+      sections.push([
+        `${i + 1}. ${m.summary || m.content.slice(0, 180)}`,
+        `   id: ${m.id}`,
+        `   type: ${m.type}; source: ${m.source}; created: ${m.created_at}`,
+        `   tags: ${(m.tags ?? []).join(", ") || "none"}`,
+        `   content: ${m.content.slice(0, 700).replace(/\s+/g, " ")}`
+      ].join("\n"));
+    });
+  }
+
+  return sections.join("\n");
 }
 
 function renderEntityForContext(e: Entity): string[] {
