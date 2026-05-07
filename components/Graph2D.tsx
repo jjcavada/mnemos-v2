@@ -30,6 +30,8 @@ export function Graph2D() {
   const { memories, relationships, projectsById, lifeAreas, select, selected, filters } = useMemoriesStore();
   const fgRef = useRef<any>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const parallaxRef = useRef<HTMLDivElement | null>(null);
+  const hoveredRef = useRef<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
@@ -41,6 +43,36 @@ export function Graph2D() {
     const obs = new ResizeObserver(measure);
     obs.observe(el);
     return () => obs.disconnect();
+  }, []);
+
+  // mouse parallax — translate the canvas wrapper by a few px against cursor
+  useEffect(() => {
+    const wrap = wrapperRef.current;
+    const px = parallaxRef.current;
+    if (!wrap || !px) return;
+    let raf = 0;
+    let targetX = 0, targetY = 0;
+    let curX = 0, curY = 0;
+    const onMove = (e: MouseEvent) => {
+      const r = wrap.getBoundingClientRect();
+      targetX = ((e.clientX - r.left) / r.width - 0.5) * -8;
+      targetY = ((e.clientY - r.top) / r.height - 0.5) * -8;
+    };
+    const onLeave = () => { targetX = 0; targetY = 0; };
+    const tick = () => {
+      curX += (targetX - curX) * 0.08;
+      curY += (targetY - curY) * 0.08;
+      px.style.transform = `translate3d(${curX.toFixed(2)}px, ${curY.toFixed(2)}px, 0)`;
+      raf = requestAnimationFrame(tick);
+    };
+    wrap.addEventListener("mousemove", onMove);
+    wrap.addEventListener("mouseleave", onLeave);
+    raf = requestAnimationFrame(tick);
+    return () => {
+      wrap.removeEventListener("mousemove", onMove);
+      wrap.removeEventListener("mouseleave", onLeave);
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
   const data = useMemo(() => {
@@ -239,6 +271,27 @@ export function Graph2D() {
       };
       if (typeof fg.d3Force === "function") fg.d3Force("hub", hubPull);
 
+      // gravity: when a memory is hovered, nearby memories drift toward it
+      const nodeIndex = new Map(data.nodes.map((n: any) => [n.id, n]));
+      const gravityPull = (alpha: number) => {
+        const hovId = hoveredRef.current;
+        if (!hovId) return;
+        const target: any = nodeIndex.get(hovId);
+        if (!target || target.kind === "me") return;
+        const k = 0.05 * alpha;
+        for (const n of data.nodes as any[]) {
+          if (n.id === hovId) continue;
+          if (n.kind === "me" || n.kind?.startsWith("category")) continue;
+          const dx = (target.x ?? 0) - (n.x ?? 0);
+          const dy = (target.y ?? 0) - (n.y ?? 0);
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 4 || dist > 110) continue;
+          n.vx = (n.vx ?? 0) + (dx / dist) * k;
+          n.vy = (n.vy ?? 0) + (dy / dist) * k;
+        }
+      };
+      if (typeof fg.d3Force === "function") fg.d3Force("gravity", gravityPull);
+
       if (typeof fg.d3ReheatSimulation === "function") fg.d3ReheatSimulation();
     } catch (err) {
       console.warn("[Graph2D] force tuning skipped:", err);
@@ -266,6 +319,7 @@ export function Graph2D() {
 
   return (
     <div ref={wrapperRef} className="absolute inset-0">
+      <div ref={parallaxRef} className="absolute inset-0 will-change-transform" style={{ transition: "transform 80ms linear" }}>
       <ForceGraph2D
         ref={fgRef as any}
         width={size.w || undefined}
@@ -313,60 +367,84 @@ export function Graph2D() {
           const focus = focusOf(node.id);
           const dimmed = focus === "dim";
           const isSelected = focus === "selected";
-          const r = node.size;
+
+          // ---- spring scale: target 1.15 when hovered, 1.0 otherwise (lerped per frame) ----
+          const targetScale = focus === "selected" || focus === "neighbor" || hovered === node.id ? 1.15 : 1.0;
+          node._scale = (node._scale ?? 1) + (targetScale - (node._scale ?? 1)) * 0.18;
+          const r = node.size * node._scale;
+
+          // ---- pulse: selected nodes oscillate alpha 0.6-1.0 on a 2s cycle ----
+          const pulseAlpha = isSelected
+            ? 0.7 + 0.3 * Math.sin(Date.now() / 320)
+            : 1;
+
+          // ---- float: category nodes drift y by sin wave, ME stays still ----
+          let drawY = node.y;
+          if (node.kind === "category-project" || node.kind === "category-life") {
+            drawY = node.y + Math.sin(Date.now() / 1400 + (node.x + node.y) * 0.005) * 4;
+          }
 
           ctx.save();
-          ctx.globalAlpha = dimmed ? 0.18 : 1;
+          ctx.globalAlpha = dimmed ? 0.18 : pulseAlpha;
 
-          // ----- ME: large silver disc with hairline ring + JAY label -----
+          // ----- ME: high-mass silver disc, thicker rim, breathing rings, soft halo -----
           if (node.kind === "me") {
-            // outer hairline ring (breathing-room marker)
-            ctx.strokeStyle = "rgba(229,229,229,0.20)";
-            ctx.lineWidth = 0.6 / scale;
+            // outer hairline rings (breathing-room markers)
+            ctx.strokeStyle = "rgba(229,229,229,0.22)";
+            ctx.lineWidth = 0.7 / scale;
             ctx.beginPath();
-            ctx.arc(node.x, node.y, 50, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, 56, 0, Math.PI * 2);
             ctx.stroke();
             ctx.beginPath();
-            ctx.arc(node.x, node.y, 90, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, 96, 0, Math.PI * 2);
             ctx.strokeStyle = "rgba(229,229,229,0.10)";
             ctx.stroke();
 
             // soft halo
             ctx.globalCompositeOperation = "lighter";
-            const halo = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, r * 5.5);
-            halo.addColorStop(0, "rgba(229,229,229,0.25)");
-            halo.addColorStop(0.5, "rgba(229,229,229,0.06)");
+            const halo = ctx.createRadialGradient(node.x, drawY, 0, node.x, drawY, r * 6);
+            halo.addColorStop(0, "rgba(229,229,229,0.28)");
+            halo.addColorStop(0.5, "rgba(229,229,229,0.08)");
             halo.addColorStop(1, "rgba(229,229,229,0)");
             ctx.fillStyle = halo;
             ctx.beginPath();
-            ctx.arc(node.x, node.y, r * 5.5, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, r * 6, 0, Math.PI * 2);
             ctx.fill();
             ctx.globalCompositeOperation = "source-over";
 
-            // outer thin ring on the disc itself
-            ctx.strokeStyle = "rgba(229,229,229,0.85)";
-            ctx.lineWidth = 1.2 / scale;
+            // V3: thicker silver rim — high-mass treatment
+            ctx.strokeStyle = "rgba(229,229,229,0.95)";
+            ctx.lineWidth = 2.4 / scale;
             ctx.beginPath();
-            ctx.arc(node.x, node.y, r + 3, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, r + 4, 0, Math.PI * 2);
+            ctx.stroke();
+            // inner accent ring
+            ctx.strokeStyle = "rgba(229,229,229,0.45)";
+            ctx.lineWidth = 0.6 / scale;
+            ctx.beginPath();
+            ctx.arc(node.x, drawY, r + 7, 0, Math.PI * 2);
             ctx.stroke();
 
             // disc fill
             ctx.fillStyle = "#E5E5E5";
             ctx.beginPath();
-            ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, r, 0, Math.PI * 2);
             ctx.fill();
 
             // dark interior ring (lens)
             ctx.fillStyle = "#050505";
             ctx.beginPath();
-            ctx.arc(node.x, node.y, r * 0.55, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, r * 0.55, 0, Math.PI * 2);
             ctx.fill();
 
-            // tiny silver center
+            // bloom pupil
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = "rgba(255,255,255,0.6)";
             ctx.fillStyle = "#FFFFFF";
             ctx.beginPath();
-            ctx.arc(node.x, node.y, r * 0.18, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, r * 0.18, 0, Math.PI * 2);
             ctx.fill();
+            ctx.shadowBlur = 0;
 
             // label below the breathing-ring
             const fs = Math.max(11 / scale, 4);
@@ -384,24 +462,25 @@ export function Graph2D() {
             return;
           }
 
-          // ----- category hub: medium disc + always-visible label -----
+          // ----- category hub: medium disc + always-visible label, gentle float -----
           if (node.kind === "category-project" || node.kind === "category-life") {
+            const cy = drawY;
             // ring
             ctx.strokeStyle = isSelected ? "rgba(255,255,255,0.95)" : "rgba(229,229,229,0.55)";
-            ctx.lineWidth = (isSelected ? 1.4 : 0.9) / scale;
+            ctx.lineWidth = (isSelected ? 1.6 : 0.9) / scale;
             ctx.beginPath();
-            ctx.arc(node.x, node.y, r + 3, 0, Math.PI * 2);
+            ctx.arc(node.x, cy, r + 3, 0, Math.PI * 2);
             ctx.stroke();
 
             // fill
             ctx.fillStyle = node.kind === "category-project" ? "rgba(229,229,229,0.92)" : "rgba(161,161,170,0.85)";
             ctx.beginPath();
-            ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
+            ctx.arc(node.x, cy, r, 0, Math.PI * 2);
             ctx.fill();
             // dark hollow
             ctx.fillStyle = "#050505";
             ctx.beginPath();
-            ctx.arc(node.x, node.y, r * 0.45, 0, Math.PI * 2);
+            ctx.arc(node.x, cy, r * 0.45, 0, Math.PI * 2);
             ctx.fill();
 
             // label
@@ -409,8 +488,7 @@ export function Graph2D() {
             ctx.font = `500 ${fs}px Geist Mono, monospace`;
             ctx.textAlign = "center";
             ctx.textBaseline = "top";
-            // dark plate behind label for readability
-            const labelY = node.y + r + 8;
+            const labelY = cy + r + 8;
             const labelText = node.label.length > 22 ? `${node.label.slice(0, 22)}…` : node.label;
             const w = ctx.measureText(labelText).width;
             ctx.fillStyle = "rgba(5,5,5,0.78)";
@@ -422,20 +500,28 @@ export function Graph2D() {
             return;
           }
 
-          // ----- memory: small white point -----
-          // selected ring
+          // ----- memory: small white point with optional bloom on focus -----
           if (isSelected) {
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = "rgba(255,255,255,0.55)";
             ctx.strokeStyle = "rgba(255,255,255,0.95)";
-            ctx.lineWidth = 1.2 / scale;
+            ctx.lineWidth = 1.4 / scale;
             ctx.beginPath();
             ctx.arc(node.x, node.y, r + 3, 0, Math.PI * 2);
             ctx.stroke();
+            ctx.shadowBlur = 0;
           }
 
+          // bloom drop-shadow on hover/neighbor
+          if (focus === "neighbor" || hovered === node.id) {
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = "rgba(255,255,255,0.30)";
+          }
           ctx.fillStyle = isSelected ? "#FFFFFF" : focus === "neighbor" ? "rgba(255,255,255,0.95)" : "rgba(229,229,229,0.85)";
           ctx.beginPath();
           ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
           ctx.fill();
+          ctx.shadowBlur = 0;
 
           // memory label only on hover/select with offset + plate
           const showLabel = isSelected || focus === "neighbor" || hovered === node.id;
@@ -481,10 +567,18 @@ export function Graph2D() {
           if (n.kind === "category-project" || n.kind === "category-life") return;
           n.fx = undefined; n.fy = undefined;
         }}
-        onNodeHover={(n: any) => setHovered(n?.id ?? null)}
+        onNodeHover={(n: any) => {
+          setHovered(n?.id ?? null);
+          hoveredRef.current = n?.id ?? null;
+          // gentle reheat so gravity force can act
+          if (n && fgRef.current?.d3ReheatSimulation) {
+            try { fgRef.current.d3ReheatSimulation(); } catch { /* ignore */ }
+          }
+        }}
         onBackgroundClick={() => { select(null); fitGraph(700); }}
         onBackgroundRightClick={() => fitGraph(700)}
       />
+      </div>
     </div>
   );
 }

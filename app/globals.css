@@ -25,17 +25,18 @@
     --text-3: #71717A;       /* zinc 500 — text_muted */
     --text-4: #52525B;
 
-    --border: rgba(255, 255, 255, 0.08);   /* hairline border */
-    --border-strong: rgba(255, 255, 255, 0.16);
+    --border: rgba(229, 229, 229, 0.15);   /* hairline silver — V3 spec */
+    --border-strong: rgba(229, 229, 229, 0.28);
     --border-active: rgba(229, 229, 229, 0.55);
+    --bloom: rgba(255, 255, 255, 0.8);
 
     --accent: var(--silver);
 
     --radius: 12px;
     --radius-sm: 8px;
 
-    --blur-soft: blur(20px);
-    --blur-deep: blur(40px);
+    --blur-soft: blur(20px) saturate(140%);
+    --blur-deep: blur(40px) saturate(150%);
   }
 
   body {
@@ -69,11 +70,17 @@
 @layer components {
   /* ----- bento tile: the foundational hairline-bordered surface ----- */
   .bento {
-    background: var(--bg-1);
+    background: rgba(15, 15, 15, 0.4);
     border: 0.5px solid var(--border);
     border-radius: var(--radius);
     backdrop-filter: var(--blur-deep);
     -webkit-backdrop-filter: var(--blur-deep);
+  }
+  /* a "structural" tile — only the hairline, no fill, no blur */
+  .bento-line {
+    background: transparent;
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
   }
   .bento-tight { @apply bento p-3; }
   .bento-card  { @apply bento p-4; }
