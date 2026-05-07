@@ -28,42 +28,40 @@ const ME_ID = "me:jay";
 
 type GalaxyStar = { x: number; y: number; size: number; alpha: number; hue: "white" | "warm" | "cool" };
 
-function generateGalaxyStars(count = 280): GalaxyStar[] {
-  // deterministic seed so the galaxy looks the same every render
+function generateGalaxyStars(count = 360): GalaxyStar[] {
   let seed = 9133;
   const rand = () => {
     seed = (seed * 9301 + 49297) % 233280;
     return seed / 233280;
   };
   const stars: GalaxyStar[] = [];
-  // 2-arm logarithmic spiral
   const arms = 2;
-  const armSpread = 0.55; // how tightly clustered to the arm line
+  const armSpread = 0.55;
   for (let i = 0; i < count; i++) {
-    const t = rand();              // 0..1, fraction along radius
+    const t = rand();
     const arm = Math.floor(rand() * arms);
     const armOffset = (arm / arms) * Math.PI * 2;
-    // logarithmic spiral: angle grows with radius
-    const radius = 6 + Math.pow(t, 0.55) * 70;
+    // logarithmic spiral: angle grows with radius (tight twist)
+    const radius = 8 + Math.pow(t, 0.55) * 110;
     const baseAngle = armOffset + radius * 0.10;
     const angle = baseAngle + (rand() - 0.5) * armSpread * (1 - t * 0.6);
     const x = Math.cos(angle) * radius;
     const y = Math.sin(angle) * radius * 0.42; // flatten to disc
-    const size = 0.35 + rand() * 1.2 * (1 - t * 0.5);
-    const alpha = 0.32 + rand() * 0.55 * (1 - t * 0.4);
-    const hue = rand() < 0.15 ? "warm" : rand() < 0.18 ? "cool" : "white";
+    const size = 0.7 + rand() * 1.6 * (1 - t * 0.45);
+    const alpha = 0.45 + rand() * 0.5 * (1 - t * 0.35);
+    const hue = rand() < 0.18 ? "warm" : rand() < 0.16 ? "cool" : "white";
     stars.push({ x, y, size, alpha, hue });
   }
-  // a few brighter foreground stars across the disc
-  for (let i = 0; i < 24; i++) {
-    const r = 8 + rand() * 60;
+  // a handful of brighter foreground stars
+  for (let i = 0; i < 30; i++) {
+    const r = 10 + rand() * 95;
     const a = rand() * Math.PI * 2;
     stars.push({
       x: Math.cos(a) * r,
       y: Math.sin(a) * r * 0.42,
-      size: 0.9 + rand() * 1.1,
-      alpha: 0.7 + rand() * 0.3,
-      hue: rand() < 0.2 ? "warm" : "white"
+      size: 1.4 + rand() * 1.4,
+      alpha: 0.85 + rand() * 0.15,
+      hue: rand() < 0.25 ? "warm" : "white"
     });
   }
   return stars;
@@ -435,42 +433,42 @@ export function Graph2D() {
           // ----- ME: rotating spiral galaxy at the heart of the brain -----
           if (node.kind === "me") {
             // breathing-room markers (kept for design continuity)
-            ctx.strokeStyle = "rgba(229,229,229,0.18)";
+            ctx.strokeStyle = "rgba(229,229,229,0.16)";
             ctx.lineWidth = 0.7 / scale;
             ctx.beginPath();
-            ctx.arc(node.x, drawY, 96, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, 140, 0, Math.PI * 2);
             ctx.stroke();
-            ctx.strokeStyle = "rgba(229,229,229,0.08)";
+            ctx.strokeStyle = "rgba(229,229,229,0.07)";
             ctx.beginPath();
-            ctx.arc(node.x, drawY, 134, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, 180, 0, Math.PI * 2);
             ctx.stroke();
 
             // galaxy is rendered in its own coordinate frame, slowly rotating
             ctx.save();
             ctx.translate(node.x, drawY);
             const time = Date.now();
-            const rotation = time / 22000; // very slow rotation
+            const rotation = time / 9000; // visibly rotating
             ctx.rotate(rotation);
 
-            // outer disc halo — purplish/dark, fades far out
-            const haloGrad = ctx.createRadialGradient(0, 0, 18, 0, 0, 92);
-            haloGrad.addColorStop(0, "rgba(120, 96, 130, 0.10)");
-            haloGrad.addColorStop(0.45, "rgba(70, 70, 100, 0.06)");
+            // outer disc halo — dark purplish, fades far out
+            const haloGrad = ctx.createRadialGradient(0, 0, 30, 0, 0, 140);
+            haloGrad.addColorStop(0, "rgba(120, 96, 140, 0.18)");
+            haloGrad.addColorStop(0.45, "rgba(70, 70, 110, 0.08)");
             haloGrad.addColorStop(1, "rgba(20, 20, 40, 0)");
             ctx.fillStyle = haloGrad;
             ctx.beginPath();
-            ctx.ellipse(0, 0, 92, 40, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, 0, 140, 60, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            // mid-disc warm wash (the underglow of the spiral arms)
-            const midGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, 70);
-            midGrad.addColorStop(0, "rgba(255, 210, 150, 0.45)");
-            midGrad.addColorStop(0.25, "rgba(220, 170, 130, 0.20)");
-            midGrad.addColorStop(0.7, "rgba(120, 100, 130, 0.08)");
+            // mid-disc warm wash (underglow of spiral arms)
+            const midGrad = ctx.createRadialGradient(0, 0, 6, 0, 0, 110);
+            midGrad.addColorStop(0, "rgba(255, 215, 160, 0.65)");
+            midGrad.addColorStop(0.2, "rgba(240, 180, 140, 0.40)");
+            midGrad.addColorStop(0.55, "rgba(180, 140, 160, 0.18)");
             midGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
             ctx.fillStyle = midGrad;
             ctx.beginPath();
-            ctx.ellipse(0, 0, 70, 30, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, 0, 110, 48, 0, 0, Math.PI * 2);
             ctx.fill();
 
             // stars on the spiral arms (additive blend so they bloom)
@@ -489,31 +487,31 @@ export function Graph2D() {
             ctx.globalCompositeOperation = "source-over";
             ctx.restore();
 
-            // bright core (drawn in canvas-space, NOT rotated, so the core stays sharp)
+            // bright core (canvas-space, NOT rotated)
             ctx.save();
             ctx.globalCompositeOperation = "lighter";
             // wide soft outer bloom
-            const bloomGrad = ctx.createRadialGradient(node.x, drawY, 0, node.x, drawY, 22);
-            bloomGrad.addColorStop(0, "rgba(255, 245, 220, 0.95)");
-            bloomGrad.addColorStop(0.4, "rgba(255, 220, 180, 0.40)");
+            const bloomGrad = ctx.createRadialGradient(node.x, drawY, 0, node.x, drawY, 36);
+            bloomGrad.addColorStop(0, "rgba(255, 245, 220, 1)");
+            bloomGrad.addColorStop(0.35, "rgba(255, 220, 180, 0.55)");
             bloomGrad.addColorStop(1, "rgba(255, 200, 150, 0)");
             ctx.fillStyle = bloomGrad;
             ctx.beginPath();
-            ctx.arc(node.x, drawY, 22, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, 36, 0, Math.PI * 2);
             ctx.fill();
             // tight hot core
-            const coreGrad = ctx.createRadialGradient(node.x, drawY, 0, node.x, drawY, 8);
+            const coreGrad = ctx.createRadialGradient(node.x, drawY, 0, node.x, drawY, 14);
             coreGrad.addColorStop(0, "rgba(255, 255, 255, 1)");
-            coreGrad.addColorStop(0.5, "rgba(255, 240, 210, 0.85)");
+            coreGrad.addColorStop(0.45, "rgba(255, 240, 210, 0.95)");
             coreGrad.addColorStop(1, "rgba(255, 220, 160, 0)");
             ctx.fillStyle = coreGrad;
             ctx.beginPath();
-            ctx.arc(node.x, drawY, 8, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, 14, 0, Math.PI * 2);
             ctx.fill();
-            // pure white pinhole
+            // pinhole singularity
             ctx.fillStyle = "rgba(255, 255, 255, 1)";
             ctx.beginPath();
-            ctx.arc(node.x, drawY, 1.6, 0, Math.PI * 2);
+            ctx.arc(node.x, drawY, 2.4, 0, Math.PI * 2);
             ctx.fill();
             ctx.globalCompositeOperation = "source-over";
             ctx.restore();
@@ -524,11 +522,11 @@ export function Graph2D() {
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillStyle = "#E5E5E5";
-            ctx.fillText("JAY", node.x, node.y + 108);
+            ctx.fillText("JAY", node.x, node.y + 156);
             const sublabelFs = Math.max(8 / scale, 3);
             ctx.font = `400 ${sublabelFs}px Geist Mono, monospace`;
             ctx.fillStyle = "rgba(161,161,170,0.7)";
-            ctx.fillText("THE PERSON", node.x, node.y + 108 + sublabelFs + 4);
+            ctx.fillText("THE PERSON", node.x, node.y + 156 + sublabelFs + 4);
 
             ctx.restore();
             return;
