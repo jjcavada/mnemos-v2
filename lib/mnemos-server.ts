@@ -11,6 +11,29 @@ import {
 import type { Memory, MemorySource, MemoryType, Project } from "@/lib/types";
 
 type JsonObject = Record<string, unknown>;
+const MEMORY_SELECT = [
+  "id",
+  "content",
+  "summary",
+  "type",
+  "status",
+  "source",
+  "project_id",
+  "tags",
+  "source_url",
+  "source_metadata",
+  "retrieval_count",
+  "last_retrieved_at",
+  "importance_score",
+  "created_at",
+  "updated_at",
+  "created_by",
+  "life_area",
+  "is_project",
+  "entities",
+  "mood",
+  "occurred_at"
+].join(",");
 
 export type CaptureChatBody = {
   text?: string;
@@ -195,7 +218,7 @@ export async function searchMemories(query: string, k = 12, filters: SearchFilte
   const rows = rpcRows ?? await fallbackSearch(sb, cleanQuery, limit * 4);
   return rows
     .filter(m => matchesFilters(m, filters, project?.id ?? filters.project_id))
-    .map(m => ({ ...m, why: explainMatch(m, cleanQuery) }))
+    .map(m => ({ ...stripHeavyFields(m), why: explainMatch(m, cleanQuery) }))
     .slice(0, limit);
 }
 
@@ -306,7 +329,7 @@ async function insertMemory(sb: SupabaseClient, payload: JsonObject): Promise<st
 }
 
 async function getMemory(sb: SupabaseClient, id: string): Promise<Memory | null> {
-  const { data } = await sb.from("memories").select("*").eq("id", id).maybeSingle();
+  const { data } = await sb.from("memories").select(MEMORY_SELECT).eq("id", id).maybeSingle();
   return data as Memory | null;
 }
 
@@ -378,15 +401,22 @@ async function linkMemories(sb: SupabaseClient, from: string, to: string, relati
 }
 
 async function fallbackSearch(sb: SupabaseClient, query: string, limit: number): Promise<MemorySearchResult[]> {
-  let req = sb.from("memories").select("*").eq("status", "active").limit(1000);
+  const req = sb.from("memories").select(MEMORY_SELECT).eq("status", "active").limit(1000);
   const { data, error } = await req;
   if (error) throw new Error(`Fallback search failed: ${error.message}`);
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  return ((data ?? []) as Memory[])
+  return ((data ?? []) as unknown as Memory[])
     .map(m => ({ ...m, score: keywordScore(m, terms) }))
     .filter(m => !terms.length || (m.score ?? 0) > 0)
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || (b.importance_score ?? 0) - (a.importance_score ?? 0))
     .slice(0, limit);
+}
+
+function stripHeavyFields(row: MemorySearchResult): MemorySearchResult {
+  const copy = { ...row } as MemorySearchResult & { embedding?: unknown; fts?: unknown };
+  delete copy.embedding;
+  delete copy.fts;
+  return copy;
 }
 
 function matchesFilters(m: Memory, filters: SearchFilters, projectId?: string | null) {
