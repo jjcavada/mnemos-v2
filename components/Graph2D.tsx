@@ -14,6 +14,7 @@ type Node = {
   size: number;
   tier: number;
   isRoot: boolean;
+  groupKey: string;
   x: number;
   y: number;
   fx?: number;
@@ -103,16 +104,32 @@ export function Graph2D() {
       if (tier[m.id] === undefined) tier[m.id] = orphanTier;
     });
 
-    // bucket by tier for radial seeding
-    const buckets: Record<number, string[]> = {};
-    filtered.forEach(m => {
-      (buckets[tier[m.id]] ||= []).push(m.id);
-    });
-    const bucketIdx: Record<string, number> = {};
-    Object.values(buckets).forEach(b => b.forEach((id, i) => { bucketIdx[id] = i; }));
+    // group by project (or life-area) so each project becomes its own constellation
+    const groupKeyOf = (m: Memory) =>
+      m.is_project ? `p:${m.project_id ?? "unset"}` : `l:${m.life_area ?? "other"}`;
+    const rootGroupKey = root ? groupKeyOf(root) : null;
+    const groupKeys = Array.from(new Set(filtered.map(groupKeyOf)));
+    const otherGroups = groupKeys.filter(k => k !== rootGroupKey);
 
-    const TIER_RADII = [0, 130, 250, 370, 490, 610];
-    const radiusFor = (t: number) => TIER_RADII[Math.min(t, TIER_RADII.length - 1)] + Math.max(0, t - (TIER_RADII.length - 1)) * 130;
+    // place each non-root group at its own angle around the root, at a healthy radius
+    const SATELLITE_RADIUS = 420;
+    const groupCenter: Record<string, { gx: number; gy: number; localR: number }> = {};
+    if (rootGroupKey) groupCenter[rootGroupKey] = { gx: 0, gy: 0, localR: 110 };
+    otherGroups.forEach((gk, i) => {
+      // distribute around 320 degrees (leaving a gap at the bottom for the decorative orbital)
+      const angle = (i / Math.max(otherGroups.length, 1)) * (Math.PI * 1.78) - Math.PI / 2 - 0.5;
+      groupCenter[gk] = {
+        gx: Math.cos(angle) * SATELLITE_RADIUS,
+        gy: Math.sin(angle) * SATELLITE_RADIUS,
+        localR: 90
+      };
+    });
+
+    // local indexing within each group for stable angles
+    const groupBuckets: Record<string, string[]> = {};
+    filtered.forEach(m => { (groupBuckets[groupKeyOf(m)] ||= []).push(m.id); });
+    const groupIdx: Record<string, number> = {};
+    Object.values(groupBuckets).forEach(b => b.forEach((id, i) => { groupIdx[id] = i; }));
 
     const connCount: Record<string, number> = {};
     links.forEach(l => {
@@ -121,24 +138,25 @@ export function Graph2D() {
     });
 
     const nodes: Node[] = filtered.map(m => {
-      const t = tier[m.id];
-      const bucket = buckets[t];
-      const idx = bucketIdx[m.id];
+      const gk = groupKeyOf(m);
+      const center = groupCenter[gk] ?? { gx: 0, gy: 0, localR: 100 };
+      const bucket = groupBuckets[gk];
+      const idx = groupIdx[m.id];
       const angle = bucket.length === 1 ? 0 : (idx / bucket.length) * Math.PI * 2;
-      const radius = radiusFor(t);
-      const jitter = (m.id.charCodeAt(0) % 9 - 4) * 6; // small deterministic jitter so labels don't perfectly overlap
-      const x = Math.cos(angle) * (radius + jitter);
-      const y = Math.sin(angle) * (radius + jitter);
       const isRoot = root !== null && m.id === root.id;
+      const localR = center.localR * (0.6 + (idx % 4) * 0.18); // mild internal spread
+      const x = isRoot ? 0 : center.gx + Math.cos(angle) * localR;
+      const y = isRoot ? 0 : center.gy + Math.sin(angle) * localR;
       return {
         id: m.id,
         label: m.summary || m.content.slice(0, 60),
         color: memoryColor(m, projectsById),
         size: (isRoot ? 7 : 4) + Math.sqrt(connCount[m.id] ?? 0) * 1.35 + (m.importance_score ?? 0.5),
-        tier: t,
+        tier: tier[m.id],
         isRoot,
-        x: isRoot ? 0 : x,
-        y: isRoot ? 0 : y,
+        groupKey: gk,
+        x,
+        y,
         fx: isRoot ? 0 : undefined,
         fy: isRoot ? 0 : undefined,
         mem: m
@@ -161,23 +179,25 @@ export function Graph2D() {
     return m;
   }, [data]);
 
-  // gentle force tuning — wrapped defensively so a bad runtime API doesn't kill the whole graph
+  // gentle force tuning — short intra-cluster links, long cross-cluster links
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg || data.nodes.length === 0) return;
     try {
       const charge = typeof fg.d3Force === "function" ? fg.d3Force("charge") : null;
-      if (charge && typeof charge.strength === "function") charge.strength(-160);
+      if (charge && typeof charge.strength === "function") charge.strength(-130).distanceMax?.(450);
       const link = typeof fg.d3Force === "function" ? fg.d3Force("link") : null;
       if (link && typeof link.distance === "function") {
-        const tierMap = new Map(data.nodes.map(n => [n.id, n.tier]));
+        const groupMap = new Map(data.nodes.map(n => [n.id, n.groupKey]));
         link.distance((l: any) => {
           const sId = typeof l.source === "object" ? l.source.id : l.source;
           const tId = typeof l.target === "object" ? l.target.id : l.target;
-          const aT = tierMap.get(sId) ?? 0;
-          const bT = tierMap.get(tId) ?? 0;
-          return 70 + Math.abs(aT - bT) * 50;
+          const sg = groupMap.get(sId);
+          const tg = groupMap.get(tId);
+          // same project/life-area: tight; cross-cluster: long bridge
+          return sg && tg && sg === tg ? 38 : 220;
         });
+        if (typeof link.strength === "function") link.strength(0.55);
       }
       if (typeof fg.d3ReheatSimulation === "function") fg.d3ReheatSimulation();
     } catch (err) {
@@ -310,27 +330,21 @@ export function Graph2D() {
           }
           ctx.restore();
 
-          // ---- soft concentric meridian rings around the cosmic origin (root at world 0,0) ----
+          // ---- single decorative outer orbital (curving around the constellation) ----
           ctx.save();
           ctx.lineWidth = 1;
-          const ringRadii = [130, 250, 370, 490];
-          ringRadii.forEach((r, i) => {
-            const grad = ctx.createRadialGradient(0, 0, r * 0.95, 0, 0, r * 1.05);
-            grad.addColorStop(0, "rgba(125,211,252,0)");
-            grad.addColorStop(0.5, `rgba(125,211,252,${0.10 - i * 0.018})`);
-            grad.addColorStop(1, "rgba(125,211,252,0)");
-            ctx.strokeStyle = grad;
-            ctx.beginPath();
-            ctx.arc(0, 0, r, 0, Math.PI * 2);
-            ctx.stroke();
-          });
-          // a fainter core radial bloom at origin
-          const coreGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, 110);
-          coreGlow.addColorStop(0, "rgba(251,191,36,0.10)");
+          ctx.strokeStyle = "rgba(125,211,252,0.18)";
+          ctx.beginPath();
+          // big tilted ellipse offset from origin so it sweeps below the constellation like a star-chart trajectory
+          ctx.ellipse(60, 110, 620, 410, 0.32, 0, Math.PI * 2);
+          ctx.stroke();
+          // very faint core bloom at the origin so the root star sits in a soft glow
+          const coreGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, 130);
+          coreGlow.addColorStop(0, "rgba(251,191,36,0.08)");
           coreGlow.addColorStop(1, "rgba(251,191,36,0)");
           ctx.fillStyle = coreGlow;
           ctx.beginPath();
-          ctx.arc(0, 0, 110, 0, Math.PI * 2);
+          ctx.arc(0, 0, 130, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
         }}
