@@ -88,79 +88,86 @@ export default function PeoplePage() {
   const visible = filter === "all" ? aggregated : aggregated.filter(v => v.kind === filter);
 
   return (
-    <div className="absolute inset-0 overflow-y-auto p-8">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold mb-1">People & Entities</h1>
-          <p className="text-text-3 text-sm">Click any card to add details so AI knows who/what they are.</p>
-        </div>
-        <button
-          onClick={() => setTarget({ mode: "create" })}
-          className="inline-flex items-center gap-2 px-3 py-2 bg-accent text-black rounded-lg text-xs font-semibold"
-        >
-          <Plus className="w-4 h-4" />
-          New entity
-        </button>
-      </div>
-
-      <div className="flex gap-2 mb-6">
-        {["all", "person", "place", "organization", "book", "tool", "concept"].map(k => (
+    <div className="absolute inset-0 overflow-y-auto">
+      <div className="sticky top-0 z-10 px-8 py-3" style={{ background: "rgba(5,5,5,0.78)", borderBottom: "0.5px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
+        <div className="flex items-center justify-between max-w-[1200px] mx-auto">
+          <span className="font-mono text-[10px] tracking-[0.32em] uppercase text-text-3">People &amp; entities</span>
           <button
-            key={k}
-            onClick={() => setFilter(k)}
-            className={`pill ${filter === k ? "active" : ""}`}
-          >{k}</button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-        {visible.map(v => {
-          const description = typeof v.metadata?.description === "string" ? v.metadata.description : "";
-          const role = typeof v.metadata?.role === "string" ? v.metadata.role : "";
-          const hasDetails = Boolean(description || role);
-          return (
-            <button
-              key={v.slug}
-              onClick={() => setTarget({ mode: "edit", slug: v.slug })}
-              className="bg-bg-1 border border-border rounded-lg p-4 text-left hover:border-border-strong transition-colors"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-text-1 font-semibold text-sm truncate">{v.name}</div>
-                  <div className="text-[11px] text-text-3 mt-1">
-                    {v.kind} · {v.mentions} mention{v.mentions !== 1 ? "s" : ""}
-                    {role && <> · {role}</>}
-                  </div>
-                </div>
-                {hasDetails && <span className="text-[10px] text-accent">profiled</span>}
-              </div>
-              {description && (
-                <div className="text-[12px] text-text-2 mt-2 line-clamp-3">{description}</div>
-              )}
-              {!description && (
-                <div className="mt-3 space-y-1">
-                  {unique(v.ids).slice(0, 2).map(id => {
-                    const m = memories.find(x => x.id === id);
-                    if (!m) return null;
-                    return (
-                      <div key={id} className="text-[11px] text-text-3 truncate">
-                        - {m.summary || m.content.slice(0, 50)}
-                      </div>
-                    );
-                  })}
-                  {unique(v.ids).length > 2 && <div className="text-[10px] text-text-4">+{unique(v.ids).length - 2} more</div>}
-                </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {visible.length === 0 && (
-        <div className="text-text-3 text-sm py-12 text-center">
-          No matching entities yet. Click <span className="text-accent">New entity</span> to add one manually, or capture more memories to populate links automatically.
+            onClick={() => setTarget({ mode: "create" })}
+            className="inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-[11px] font-medium"
+            style={{ background: "rgba(229,229,229,0.92)", color: "#0a0a0a" }}
+          >
+            <Plus className="w-3 h-3" />
+            New entity
+          </button>
         </div>
-      )}
+      </div>
+
+      <div className="max-w-[1200px] mx-auto px-8 pt-8 pb-16">
+        <div className="flex flex-wrap gap-1.5 mb-6">
+          {["all", "person", "place", "organization", "book", "tool", "concept"].map(k => (
+            <button
+              key={k}
+              onClick={() => setFilter(k)}
+              className={`pill ${filter === k ? "active" : ""}`}
+            >{k}</button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+          {visible.map(v => {
+            const description = typeof v.metadata?.description === "string" ? v.metadata.description : "";
+            const role = typeof v.metadata?.role === "string" ? v.metadata.role : "";
+            const hasDetails = Boolean(description || role);
+            return (
+              <button
+                key={v.slug}
+                onClick={() => setTarget({ mode: "edit", slug: v.slug })}
+                className="bento-tight text-left transition-colors hover:bg-white/[0.04]"
+              >
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <div className="min-w-0">
+                    <div className="text-text-1 font-medium text-[13px] truncate">{v.name}</div>
+                    <div className="font-mono text-[9.5px] tracking-[0.16em] uppercase text-text-4 mt-1">
+                      {v.kind} · {v.mentions} mention{v.mentions !== 1 ? "s" : ""}
+                    </div>
+                    {role && <div className="text-[11px] text-text-3 mt-1">{role}</div>}
+                  </div>
+                  {hasDetails && (
+                    <span className="font-mono text-[8.5px] tracking-[0.18em] uppercase text-text-1" style={{ background: "rgba(229,229,229,0.08)", padding: "1px 5px", borderRadius: "3px" }}>
+                      profiled
+                    </span>
+                  )}
+                </div>
+                {description ? (
+                  <div className="text-[12px] text-text-2 line-clamp-3 mt-2" style={{ letterSpacing: "0.001em" }}>{description}</div>
+                ) : (
+                  <div className="mt-2 space-y-1">
+                    {unique(v.ids).slice(0, 2).map(id => {
+                      const m = memories.find(x => x.id === id);
+                      if (!m) return null;
+                      return (
+                        <div key={id} className="text-[11px] text-text-3 truncate">
+                          {m.summary || m.content.slice(0, 50)}
+                        </div>
+                      );
+                    })}
+                    {unique(v.ids).length > 2 && (
+                      <div className="font-mono text-[9px] tracking-wider uppercase text-text-4">+{unique(v.ids).length - 2}</div>
+                    )}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {visible.length === 0 && (
+          <div className="text-center py-16 text-[13px] text-text-3">
+            No matching entities yet. Click <span className="text-text-1">New entity</span> to add one manually, or capture more memories.
+          </div>
+        )}
+      </div>
 
       <EntityDrawer
         target={target}

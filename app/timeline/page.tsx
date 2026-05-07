@@ -1,8 +1,12 @@
 "use client";
 import { useMemo } from "react";
 import { useMemoriesStore, applyFilters } from "@/store/memories";
-import { memoryColor } from "@/lib/colors";
 import { MemoryDrawer } from "@/components/MemoryDrawer";
+
+const MONTH_NAMES = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
 
 export default function TimelinePage() {
   const { memories, projectsById, select } = useMemoriesStore();
@@ -19,39 +23,50 @@ export default function TimelinePage() {
   }, [memories]);
 
   return (
-    <div className="absolute inset-0 overflow-y-auto p-8 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-1">Timeline</h1>
-      <p className="text-text-3 text-sm mb-8">Your memories grouped by month. Click any dot to open it.</p>
-
-      <div className="relative pl-12">
-        {/* vertical line */}
-        <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
-
-        {buckets.map(([month, items]) => (
-          <section key={month} className="mb-10 relative">
-            <div className="absolute -left-12 top-0 w-3 h-3 rounded-full bg-accent border-4 border-bg-0" />
-            <div className="text-text-1 font-semibold text-lg mb-1">{month}</div>
-            <div className="text-text-3 text-xs mb-4">{items.length} memories</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {items.map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => select(m)}
-                  className="mem-card text-left flex items-start gap-3"
-                >
-                  <span className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: memoryColor(m, projectsById) }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] text-text-1 font-medium truncate">{m.summary || m.content.slice(0, 70)}</div>
-                    <div className="text-[11px] text-text-3 mt-0.5">
-                      {new Date(m.created_at).toLocaleDateString()} · {m.is_project ? (m.project_id && projectsById[m.project_id]?.name) : (m.life_area ?? "life")} · {m.type}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
-        ))}
+    <div className="absolute inset-0 overflow-y-auto">
+      <div className="sticky top-0 z-10 px-8 py-3" style={{ background: "rgba(5,5,5,0.78)", borderBottom: "0.5px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
+        <div className="flex items-baseline justify-between max-w-[760px] mx-auto">
+          <span className="font-mono text-[10px] tracking-[0.32em] uppercase text-text-3">Timeline</span>
+          <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-text-4">{buckets.length} months</span>
+        </div>
       </div>
+
+      <div className="max-w-[760px] mx-auto px-8 pt-10 pb-16">
+        {buckets.map(([month, items]) => {
+          const [y, mo] = month.split("-");
+          const monthLabel = `${MONTH_NAMES[parseInt(mo, 10) - 1]} ${y}`;
+          return (
+            <section key={month} className="mb-12">
+              <div className="flex items-baseline gap-3 mb-5" style={{ borderBottom: "0.5px solid rgba(255,255,255,0.08)", paddingBottom: "10px" }}>
+                <h2 className="text-text-1 text-[20px] font-medium" style={{ letterSpacing: "-0.02em" }}>{monthLabel}</h2>
+                <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-text-4">{items.length} memories</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {items.map(m => {
+                  const proj = m.is_project && m.project_id ? projectsById[m.project_id] : null;
+                  const date = new Date(m.created_at);
+                  return (
+                    <button key={m.id} onClick={() => select(m)} className="mem-card text-left">
+                      <div className="font-mono text-[9.5px] tracking-[0.16em] uppercase text-text-4 mb-1.5">
+                        {String(date.getDate()).padStart(2, "0")} · {proj?.name ?? (m.is_project ? "project" : `life · ${m.life_area ?? "other"}`)} · {m.type}
+                      </div>
+                      <div className="text-[13px] text-text-1 font-medium leading-snug">
+                        {m.summary || m.content.slice(0, 90)}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+
+        {buckets.length === 0 && (
+          <div className="text-center py-24 text-text-3 text-[13px]">No memories yet.</div>
+        )}
+      </div>
+
       <MemoryDrawer />
     </div>
   );

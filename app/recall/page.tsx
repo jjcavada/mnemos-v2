@@ -1,14 +1,13 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowUpRight,
   BookmarkPlus,
-  BrainCircuit,
   ChevronDown,
   ChevronRight,
   Clock,
   Download,
   FileText,
-  History,
   Loader2,
   Sparkles,
   X
@@ -63,14 +62,10 @@ export default function RecallPage() {
     try {
       const raw = window.localStorage.getItem(RECENTS_KEY);
       if (raw) setRecents(JSON.parse(raw) as string[]);
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   function pushRecent(q: string) {
     const next = [q, ...recents.filter(r => r.toLowerCase() !== q.toLowerCase())].slice(0, 8);
@@ -163,127 +158,120 @@ export default function RecallPage() {
   }
 
   return (
-    <div className="absolute inset-0 overflow-y-auto p-8 max-w-5xl mx-auto">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <BrainCircuit className="w-6 h-6 text-accent" />
-            Recall
-          </h1>
-          <p className="text-text-3 text-sm mt-1">Ask anything. Mnemos pulls only the relevant memories, then composes a direct answer.</p>
-        </div>
-        <button
-          onClick={exportArchive}
-          className="inline-flex items-center gap-2 px-3 py-2 bg-bg-2 border border-border rounded-lg text-sm text-text-2 hover:text-text-1 hover:border-border-strong"
-        >
-          <Download className="w-4 h-4" />
-          Export
-        </button>
-      </div>
-
-      <section className="bg-bg-1 border border-border rounded-xl p-4 mb-4">
-        <div className="flex items-center gap-3">
-          <Sparkles className="w-5 h-5 text-accent shrink-0" />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !loading) void ask(); }}
-            placeholder="Who is Daylon? What's blocking Nutrition Intuition? UDT Glendale n8n stack…"
-            className="flex-1 bg-transparent outline-none text-sm placeholder-text-3"
-          />
-          {query && (
-            <button onClick={clearAll} className="p-1 text-text-3 hover:text-text-1">
-              <X className="w-4 h-4" />
-            </button>
-          )}
+    <div className="absolute inset-0 overflow-y-auto">
+      <div className="sticky top-0 z-10 px-8 py-3" style={{ background: "rgba(5,5,5,0.78)", borderBottom: "0.5px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
+        <div className="flex items-center justify-between max-w-[860px] mx-auto">
+          <span className="font-mono text-[10px] tracking-[0.32em] uppercase text-text-3">Recall · Ask</span>
           <button
-            onClick={() => void ask()}
-            disabled={loading || !query.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-black rounded-lg text-xs font-semibold disabled:opacity-50"
+            onClick={exportArchive}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-text-3 hover:text-text-1 transition-colors"
+            style={{ background: "rgba(255,255,255,0.025)", border: "0.5px solid rgba(255,255,255,0.08)" }}
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            Ask
+            <Download className="w-3 h-3" />
+            <span className="font-mono text-[10px] tracking-[0.18em] uppercase">Export</span>
           </button>
         </div>
+      </div>
 
-        <div className="flex flex-wrap gap-2 mt-3">
-          {QUICK_QUERIES.map(q => (
+      <div className="max-w-[860px] mx-auto px-8 pt-8 pb-16">
+        {/* ask input */}
+        <section className="bento-card mb-3 spring-in">
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-4 h-4 text-text-3 shrink-0" strokeWidth={1.6} />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !loading) void ask(); }}
+              placeholder="Ask anything · Mnemos pulls only the relevant memories"
+              className="flex-1 bg-transparent outline-none text-[14px] placeholder-text-3 text-text-1"
+              style={{ letterSpacing: "0.001em" }}
+            />
+            {query && (
+              <button onClick={clearAll} className="p-1 text-text-3 hover:text-text-1">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
-              key={q}
-              onClick={() => void ask(q)}
-              className="text-[11px] px-2.5 py-1 bg-bg-2 border border-border rounded-full text-text-3 hover:text-text-1 hover:border-border-strong"
-            >{q}</button>
-          ))}
-        </div>
-      </section>
-
-      {recents.length > 0 && !response && !loading && (
-        <section className="mb-4 text-[11px] text-text-3">
-          <div className="flex items-center gap-2 mb-2">
-            <History className="w-3.5 h-3.5" />
-            <span>Recent queries</span>
+              onClick={() => void ask()}
+              disabled={loading || !query.trim()}
+              className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-md text-[12px] font-medium disabled:opacity-40 transition-opacity"
+              style={{ background: "rgba(229,229,229,0.92)", color: "#0a0a0a" }}
+            >
+              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" strokeWidth={1.8} />}
+              Ask
+            </button>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {recents.map(r => (
-              <button
-                key={r}
-                onClick={() => void ask(r)}
-                className="text-[11px] px-2 py-0.5 bg-bg-2 border border-border rounded text-text-3 hover:text-text-1"
-              >{r}</button>
+
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {QUICK_QUERIES.map(q => (
+              <button key={q} onClick={() => void ask(q)} className="pill text-[11px]">{q}</button>
             ))}
           </div>
         </section>
-      )}
 
-      {error && <div className="mb-4 text-red-300 text-sm bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">{error}</div>}
+        {recents.length > 0 && !response && !loading && (
+          <section className="mb-4">
+            <div className="h-micro mb-2">Recent</div>
+            <div className="flex flex-wrap gap-1.5">
+              {recents.map(r => (
+                <button key={r} onClick={() => void ask(r)} className="pill text-[11px] h-[22px]">{r}</button>
+              ))}
+            </div>
+          </section>
+        )}
 
-      {loading && (
-        <div className="text-text-3 text-sm py-12 text-center flex items-center justify-center gap-2">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Pulling memories and composing answer…
-        </div>
-      )}
+        {error && (
+          <div className="mb-4 px-3 py-2 rounded-md text-[12px]" style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.12)", color: "#F4F4F5" }}>
+            {error}
+          </div>
+        )}
 
-      {response && !loading && (
-        <>
-          <AnswerCard
-            response={response}
-            onAsk={ask}
-            onSave={saveAnswerAsMemory}
-            saving={savingMemory}
-          />
+        {loading && (
+          <div className="text-text-3 text-[13px] py-12 text-center flex items-center justify-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Pulling memories. Composing answer.
+          </div>
+        )}
 
-          {(response.entities ?? []).length > 0 && (
-            <EntitiesRow
-              entities={response.entities ?? []}
-              onOpen={(slug) => setEntityTarget({ mode: "edit", slug })}
+        {response && !loading && (
+          <>
+            <AnswerCard
+              response={response}
+              onAsk={ask}
+              onSave={saveAnswerAsMemory}
+              saving={savingMemory}
             />
-          )}
 
-          {(response.projects ?? []).length > 0 && (
-            <ProjectsRow projects={response.projects ?? []} />
-          )}
+            {(response.entities ?? []).length > 0 && (
+              <EntitiesRow
+                entities={response.entities ?? []}
+                onOpen={(slug) => setEntityTarget({ mode: "edit", slug })}
+              />
+            )}
 
-          <MemoriesList
-            memories={response.memories ?? []}
-            principles={response.principles ?? []}
-            onPick={(m) => select(m)}
-          />
+            {(response.projects ?? []).length > 0 && (
+              <ProjectsRow projects={response.projects ?? []} />
+            )}
 
-          {response.context_markdown && (
-            <ContextPackToggle
-              show={showContext}
-              onToggle={() => setShowContext(s => !s)}
-              markdown={response.context_markdown}
+            <MemoriesList
+              memories={response.memories ?? []}
+              principles={response.principles ?? []}
+              onPick={(m) => select(m)}
             />
-          )}
-        </>
-      )}
 
-      {!response && !loading && (
-        <EmptyState />
-      )}
+            {response.context_markdown && (
+              <ContextPackToggle
+                show={showContext}
+                onToggle={() => setShowContext(s => !s)}
+                markdown={response.context_markdown}
+              />
+            )}
+          </>
+        )}
+
+        {!response && !loading && <EmptyState />}
+      </div>
 
       <MemoryDrawer />
       <EntityDrawer
@@ -292,6 +280,27 @@ export default function RecallPage() {
         onSaved={() => setEntityTarget(null)}
       />
     </div>
+  );
+}
+
+function ConfidenceBadge({ confidence }: { confidence: Confidence }) {
+  const labelMap: Record<Confidence, string> = {
+    high: "high signal",
+    medium: "partial",
+    low: "uncertain"
+  };
+  const colorMap: Record<Confidence, string> = {
+    high: "rgba(229,229,229,0.92)",
+    medium: "rgba(161,161,170,0.85)",
+    low: "rgba(113,113,122,0.75)"
+  };
+  return (
+    <span
+      className="font-mono text-[9.5px] tracking-[0.18em] uppercase px-2 py-0.5 rounded"
+      style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.08)", color: colorMap[confidence] }}
+    >
+      {labelMap[confidence]}
+    </span>
   );
 }
 
@@ -306,60 +315,42 @@ function AnswerCard({
   onSave: () => void;
   saving: "saving" | "saved" | null;
 }) {
-  const confidenceColor = response.confidence === "high"
-    ? "text-green-300 border-green-800/40"
-    : response.confidence === "medium"
-      ? "text-amber-300 border-amber-800/40"
-      : "text-red-300 border-red-900/40";
-
   return (
-    <section className="bg-bg-1 border border-border rounded-xl p-5 mb-4">
+    <section className="bento-card mb-3 spring-in">
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2 text-[11px] text-text-3">
-          <Sparkles className="w-3.5 h-3.5 text-accent" />
-          <span>Answer</span>
-          {response.confidence && (
-            <span className={`px-2 py-0.5 rounded border text-[10px] ${confidenceColor}`}>
-              {response.confidence} confidence
-            </span>
-          )}
-        </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={onSave}
-            disabled={saving === "saving" || !response.answer}
-            className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 bg-bg-2 border border-border rounded text-text-3 hover:text-text-1 disabled:opacity-50"
-          >
-            {saving === "saving" ? <Loader2 className="w-3 h-3 animate-spin" /> : <BookmarkPlus className="w-3 h-3" />}
-            {saving === "saved" ? "Saved as memory" : saving === "saving" ? "Saving" : "Save as memory"}
-          </button>
+          <span className="h-micro">Answer</span>
+          {response.confidence && <ConfidenceBadge confidence={response.confidence} />}
         </div>
+        <button
+          onClick={onSave}
+          disabled={saving === "saving" || !response.answer}
+          className="inline-flex items-center gap-1.5 h-6 px-2 rounded text-[10px] font-mono tracking-[0.14em] uppercase text-text-3 hover:text-text-1 disabled:opacity-40 transition-colors"
+          style={{ background: "rgba(255,255,255,0.025)", border: "0.5px solid rgba(255,255,255,0.08)" }}
+        >
+          {saving === "saving" ? <Loader2 className="w-3 h-3 animate-spin" /> : <BookmarkPlus className="w-3 h-3" />}
+          {saving === "saved" ? "Saved" : saving === "saving" ? "Saving" : "Save"}
+        </button>
       </div>
 
       {response.answer ? (
-        <div className="text-text-1 text-[15px] leading-relaxed whitespace-pre-wrap">{response.answer}</div>
+        <div className="text-text-1 text-[15px] leading-relaxed whitespace-pre-wrap" style={{ letterSpacing: "0.001em" }}>{response.answer}</div>
       ) : (
-        <div className="text-text-3 text-sm">
-          {response.missing ?? "No memories matched this query."}
-        </div>
+        <div className="text-text-3 text-[13px]">{response.missing ?? "No memories matched this query."}</div>
       )}
 
       {response.missing && response.answer && (
-        <div className="mt-3 text-[12px] text-amber-300/80 border-l-2 border-amber-700/50 pl-3">
-          Missing context: {response.missing}
+        <div className="mt-3 text-[12px] text-text-3 pl-3" style={{ borderLeft: "0.5px solid rgba(229,229,229,0.32)" }}>
+          <span className="h-micro mr-2">Missing</span>{response.missing}
         </div>
       )}
 
       {(response.followups?.length ?? 0) > 0 && (
-        <div className="mt-4">
-          <div className="text-[11px] uppercase tracking-wide text-text-3 mb-2">Follow up</div>
+        <div className="mt-5">
+          <div className="h-micro mb-2">Follow up</div>
           <div className="flex flex-wrap gap-1.5">
             {(response.followups ?? []).map(q => (
-              <button
-                key={q}
-                onClick={() => onAsk(q)}
-                className="text-[11px] px-2.5 py-1 bg-bg-2 border border-border rounded-full text-text-2 hover:text-text-1 hover:border-border-strong"
-              >{q}</button>
+              <button key={q} onClick={() => onAsk(q)} className="pill text-[11px]">{q}</button>
             ))}
           </div>
         </div>
@@ -368,16 +359,10 @@ function AnswerCard({
   );
 }
 
-function EntitiesRow({
-  entities,
-  onOpen
-}: {
-  entities: Entity[];
-  onOpen: (slug: string) => void;
-}) {
+function EntitiesRow({ entities, onOpen }: { entities: Entity[]; onOpen: (slug: string) => void }) {
   return (
-    <section className="mb-4">
-      <div className="text-[11px] uppercase tracking-wide text-text-3 mb-2">People & Entities</div>
+    <section className="mb-3">
+      <div className="h-micro mb-2">People &amp; entities</div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         {entities.map(e => {
           const meta = (e.metadata ?? {}) as Record<string, unknown>;
@@ -387,16 +372,17 @@ function EntitiesRow({
             <button
               key={e.slug}
               onClick={() => onOpen(e.slug)}
-              className="bg-bg-1 border border-border rounded-lg p-3 text-left hover:border-border-strong"
+              className="bento-tight text-left transition-colors hover:bg-white/[0.04]"
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-semibold text-sm text-text-1">{e.name}</div>
-                <div className="text-[10px] text-text-3">{e.kind}</div>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="font-medium text-[13px] text-text-1">{e.name}</div>
+                <div className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-text-4">{e.kind}</div>
               </div>
-              {role && <div className="text-[11px] text-text-3 mt-0.5">{role}</div>}
-              {description && <div className="text-[12px] text-text-2 mt-2 line-clamp-3">{description}</div>}
-              {!description && (
-                <div className="text-[11px] text-text-4 italic mt-2">No profile yet — click to add details.</div>
+              {role && <div className="text-[11px] text-text-3 mb-1">{role}</div>}
+              {description ? (
+                <div className="text-[12px] text-text-2 line-clamp-3" style={{ letterSpacing: "0.001em" }}>{description}</div>
+              ) : (
+                <div className="text-[11px] text-text-4">No profile yet — click to add.</div>
               )}
             </button>
           );
@@ -408,20 +394,13 @@ function EntitiesRow({
 
 function ProjectsRow({ projects }: { projects: Array<Project & { memory_count: number }> }) {
   return (
-    <section className="mb-4">
-      <div className="text-[11px] uppercase tracking-wide text-text-3 mb-2">Projects</div>
-      <div className="flex flex-wrap gap-2">
+    <section className="mb-3">
+      <div className="h-micro mb-2">Projects</div>
+      <div className="flex flex-wrap gap-1.5">
         {projects.map(p => (
-          <div
-            key={p.id}
-            className="bg-bg-1 border border-border rounded-lg px-3 py-2 flex items-center gap-3"
-          >
-            <span className="w-2 h-2 rounded-full" style={{ background: p.color || "#888" }} />
-            <div>
-              <div className="text-sm font-semibold text-text-1">{p.name}</div>
-              {p.description && <div className="text-[11px] text-text-3">{p.description}</div>}
-            </div>
-            <div className="text-[10px] text-text-4 ml-2">{p.memory_count} hit{p.memory_count === 1 ? "" : "s"}</div>
+          <div key={p.id} className="inline-flex items-center gap-2.5 pill h-[28px]">
+            <span className="text-[12px] text-text-1 font-medium">{p.name}</span>
+            <span className="font-mono text-[9.5px] text-text-4 tracking-wider">· {p.memory_count}</span>
           </div>
         ))}
       </div>
@@ -442,24 +421,20 @@ function MemoriesList({
   const dedupedPrinciples = useMemo(() => principles.filter(p => !memories.find(m => m.id === p.id)), [memories, principles]);
 
   if (memories.length === 0 && dedupedPrinciples.length === 0) {
-    return (
-      <section className="text-text-3 text-sm py-6 text-center">
-        No matching memories.
-      </section>
-    );
+    return <section className="text-text-3 text-[12px] py-8 text-center">No matching memories.</section>;
   }
 
   return (
     <>
       {dedupedPrinciples.length > 0 && (
-        <section className="mb-4">
-          <div className="text-[11px] uppercase tracking-wide text-text-3 mb-2">Relevant principles</div>
-          <div className="space-y-2">
+        <section className="mb-3">
+          <div className="h-micro mb-2">Relevant principles</div>
+          <div className="space-y-1.5">
             {dedupedPrinciples.map(m => (
               <button key={m.id} onClick={() => onPick(m)} className="mem-card w-full text-left">
-                <div className="text-sm font-medium">{m.summary || m.content.slice(0, 140)}</div>
-                <div className="text-[11px] text-text-3 mt-1">
-                  {m.type} · importance {Math.round((m.importance_score ?? 0) * 100)}%
+                <div className="text-[13px] font-medium text-text-1">{m.summary || m.content.slice(0, 140)}</div>
+                <div className="font-mono text-[10px] tracking-wider text-text-4 mt-1 uppercase">
+                  {m.type} · importance {Math.round((m.importance_score ?? 0) * 100)}
                 </div>
               </button>
             ))}
@@ -467,26 +442,26 @@ function MemoriesList({
         </section>
       )}
 
-      <section className="mb-4">
-        <div className="text-[11px] uppercase tracking-wide text-text-3 mb-2">Top memories ({memories.length})</div>
-        <div className="space-y-2">
+      <section className="mb-3">
+        <div className="flex items-baseline justify-between mb-2">
+          <span className="h-micro">Top memories</span>
+          <span className="font-mono text-[10px] tracking-wider text-text-4 uppercase">{memories.length}</span>
+        </div>
+        <div className="space-y-1.5">
           {memories.map(m => (
             <button key={m.id} onClick={() => onPick(m)} className="mem-card w-full text-left">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-text-1">{m.summary || m.content.slice(0, 160)}</div>
-                  <div className="text-[11px] text-text-3 mt-1 flex items-center gap-2 flex-wrap">
+                  <div className="text-[13px] font-medium text-text-1">{m.summary || m.content.slice(0, 160)}</div>
+                  <div className="font-mono text-[10px] tracking-wider text-text-4 mt-1 uppercase flex items-center gap-1.5 flex-wrap">
                     <span>{m.type}</span>
                     <span>·</span>
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {new Date(m.created_at).toLocaleDateString()}
-                    </span>
-                    {m.why && <><span>·</span><span className="text-text-4">{m.why}</span></>}
-                    {principleIds.has(m.id) && <><span>·</span><span className="text-accent">principle</span></>}
+                    <span className="inline-flex items-center gap-1"><Clock className="w-2.5 h-2.5" />{new Date(m.created_at).toLocaleDateString()}</span>
+                    {m.why && <><span>·</span><span>{m.why}</span></>}
+                    {principleIds.has(m.id) && <><span>·</span><span className="text-text-1">principle</span></>}
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-text-4 shrink-0 mt-1" />
+                <ChevronRight className="w-3.5 h-3.5 text-text-4 shrink-0 mt-1" />
               </div>
             </button>
           ))}
@@ -496,27 +471,16 @@ function MemoriesList({
   );
 }
 
-function ContextPackToggle({
-  show,
-  onToggle,
-  markdown
-}: {
-  show: boolean;
-  onToggle: () => void;
-  markdown: string;
-}) {
+function ContextPackToggle({ show, onToggle, markdown }: { show: boolean; onToggle: () => void; markdown: string }) {
   return (
     <section className="mb-8">
-      <button
-        onClick={onToggle}
-        className="inline-flex items-center gap-2 text-[12px] text-text-3 hover:text-text-1"
-      >
-        {show ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        <FileText className="w-3.5 h-3.5" />
-        {show ? "Hide" : "Show"} full context pack (what AI saw)
+      <button onClick={onToggle} className="inline-flex items-center gap-2 text-[11px] tracking-wider uppercase font-mono text-text-3 hover:text-text-1 transition-colors">
+        {show ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+        <FileText className="w-3 h-3" />
+        {show ? "Hide" : "Show"} context pack
       </button>
       {show && (
-        <pre className="mt-3 whitespace-pre-wrap text-xs text-text-2 leading-relaxed font-mono max-h-[480px] overflow-y-auto bg-bg-1 border border-border rounded-lg p-4">
+        <pre className="mt-3 whitespace-pre-wrap text-[11.5px] text-text-2 leading-relaxed font-mono max-h-[480px] overflow-y-auto bento p-4">
           {markdown}
         </pre>
       )}
@@ -526,13 +490,18 @@ function ContextPackToggle({
 
 function EmptyState() {
   return (
-    <section className="text-text-3 text-sm py-12">
-      <div className="max-w-md mx-auto text-center space-y-3">
-        <BrainCircuit className="w-10 h-10 text-text-4 mx-auto" />
-        <div className="text-text-2">Ask Mnemos a question.</div>
-        <div className="text-[12px] text-text-4">
-          Try asking about a person (&quot;Who is Daylon?&quot;), a project (&quot;UDT Glendale stack&quot;), or an incident
-          (&quot;May 1 incident&quot;). Mnemos will pull only the relevant memories, then compose a direct answer.
+    <section className="py-16">
+      <div className="max-w-md mx-auto text-center space-y-3 text-text-3">
+        <div className="font-mono text-[10px] tracking-[0.32em] uppercase text-text-4">Mnemos · idle</div>
+        <div className="text-[14px] text-text-2">Ask a question.</div>
+        <div className="text-[12px] text-text-4 leading-relaxed">
+          Try a person, a project, or an incident.<br />
+          Mnemos pulls only the relevant memories, then composes a direct answer.
+        </div>
+        <div className="pt-2">
+          <span className="font-mono text-[9.5px] tracking-[0.22em] uppercase text-text-4 inline-flex items-center gap-1">
+            <ArrowUpRight className="w-2.5 h-2.5" /> ⌘K opens command palette
+          </span>
         </div>
       </div>
     </section>
