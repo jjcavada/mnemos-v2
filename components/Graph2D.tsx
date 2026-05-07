@@ -273,6 +273,14 @@ export function Graph2D() {
     const fg = fgRef.current;
     if (!fg) return;
     fg.zoomToFit(duration, 70);
+    // HUD aside covers ~330px on the right; shift constellation left so it visually centers in the HUD-free zone.
+    // The camera moves to world (offsetX, 0), so world origin appears offsetX pixels left of screen center.
+    const wrapper = wrapperRef.current;
+    const w = wrapper?.clientWidth ?? 0;
+    const offsetX = w > 720 ? 165 : w > 520 ? 90 : 0;
+    if (offsetX > 0) {
+      window.setTimeout(() => fg.centerAt(offsetX, 0, Math.min(duration, 400)), duration + 30);
+    }
   }
 
   useEffect(() => {
