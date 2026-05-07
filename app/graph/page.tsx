@@ -12,9 +12,6 @@ export default function GraphPage() {
 
   return (
     <div className="absolute inset-0 graph-stage overflow-hidden">
-      <div className="absolute inset-0 mnemos-grid opacity-50 pointer-events-none" />
-      <div className="absolute inset-0 scanline pointer-events-none" />
-
       <div className="absolute top-5 left-1/2 -translate-x-1/2 z-10 flex bg-black/45 border border-cyan-300/20 rounded-md p-1 backdrop-blur">
         <button
           onClick={() => setMode("2d")}
