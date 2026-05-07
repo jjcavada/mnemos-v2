@@ -443,47 +443,29 @@ export function Graph2D() {
             ctx.fill();
           }
 
-          // ---- root core bloom + 4-spike lens flare ----
+          // ---- root core bloom + small 4-spike lens flare (kept tight, not dominant) ----
           ctx.save();
           ctx.globalCompositeOperation = "lighter";
-          // core bloom
-          const coreGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, 160);
-          coreGlow.addColorStop(0, "rgba(253,224,71,0.30)");
-          coreGlow.addColorStop(0.4, "rgba(251,191,36,0.10)");
+          const coreGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, 90);
+          coreGlow.addColorStop(0, "rgba(253,224,71,0.22)");
+          coreGlow.addColorStop(0.5, "rgba(251,191,36,0.06)");
           coreGlow.addColorStop(1, "rgba(251,191,36,0)");
           ctx.fillStyle = coreGlow;
           ctx.beginPath();
-          ctx.arc(0, 0, 160, 0, Math.PI * 2);
+          ctx.arc(0, 0, 90, 0, Math.PI * 2);
           ctx.fill();
-          // 4 lens-flare spikes — gradient lines extending out
-          const spikeLen = 220;
-          const spikeGrad = (a: number) => {
-            const g = ctx.createLinearGradient(0, 0, Math.cos(a) * spikeLen, Math.sin(a) * spikeLen);
-            g.addColorStop(0, "rgba(253,224,71,0.65)");
-            g.addColorStop(0.4, "rgba(251,191,36,0.18)");
-            g.addColorStop(1, "rgba(251,191,36,0)");
-            return g;
-          };
+          const spikeLen = 70;
           const angles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
-          ctx.lineWidth = 1.4;
+          ctx.lineWidth = 1.0;
           for (const a of angles) {
-            ctx.strokeStyle = spikeGrad(a);
+            const g = ctx.createLinearGradient(0, 0, Math.cos(a) * spikeLen, Math.sin(a) * spikeLen);
+            g.addColorStop(0, "rgba(253,224,71,0.45)");
+            g.addColorStop(0.6, "rgba(251,191,36,0.12)");
+            g.addColorStop(1, "rgba(251,191,36,0)");
+            ctx.strokeStyle = g;
             ctx.beginPath();
             ctx.moveTo(0, 0);
             ctx.lineTo(Math.cos(a) * spikeLen, Math.sin(a) * spikeLen);
-            ctx.stroke();
-          }
-          // diagonal spikes (shorter, fainter)
-          const diagLen = 140;
-          ctx.lineWidth = 0.8;
-          for (const a of [Math.PI / 4, Math.PI * 0.75, Math.PI * 1.25, Math.PI * 1.75]) {
-            const dg = ctx.createLinearGradient(0, 0, Math.cos(a) * diagLen, Math.sin(a) * diagLen);
-            dg.addColorStop(0, "rgba(253,224,71,0.35)");
-            dg.addColorStop(1, "rgba(251,191,36,0)");
-            ctx.strokeStyle = dg;
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(Math.cos(a) * diagLen, Math.sin(a) * diagLen);
             ctx.stroke();
           }
           ctx.restore();
