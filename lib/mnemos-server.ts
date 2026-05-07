@@ -424,7 +424,7 @@ async function fallbackSearch(sb: SupabaseClient, query: string, limit: number):
   const req = sb.from("memories").select(MEMORY_SELECT).eq("status", "active").limit(1000);
   const { data, error } = await req;
   if (error) throw new Error(`Fallback search failed: ${error.message}`);
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = queryTerms(query);
   return ((data ?? []) as unknown as Memory[])
     .map(m => ({ ...m, score: keywordScore(m, terms) }))
     .filter(m => !terms.length || (m.score ?? 0) > 0)
@@ -451,15 +451,29 @@ function matchesFilters(m: Memory, filters: SearchFilters, projectId?: string | 
 
 function keywordScore(m: Memory, terms: string[]) {
   const text = `${m.summary ?? ""} ${m.content} ${(m.tags ?? []).join(" ")} ${m.life_area ?? ""}`.toLowerCase();
-  return terms.reduce((score, term) => score + (text.includes(term) ? 1 : 0), 0) + (m.importance_score ?? 0);
+  if (!terms.length) return m.importance_score ?? 0;
+  const matches = terms.reduce((score, term) => score + (text.includes(term) ? 1 : 0), 0);
+  return matches > 0 ? matches + (m.importance_score ?? 0) : 0;
 }
 
 function explainMatch(m: Memory, query: string) {
   if (!query.trim()) return "recent important memory";
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = queryTerms(query);
   const hay = `${m.summary ?? ""} ${m.content} ${(m.tags ?? []).join(" ")}`.toLowerCase();
   const hits = terms.filter(t => hay.includes(t)).slice(0, 6);
   return hits.length ? `matched: ${hits.join(", ")}` : "semantic match";
+}
+
+const SEARCH_STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "been", "being", "by", "do", "does", "for",
+  "from", "had", "has", "have", "how", "i", "if", "in", "is", "it", "me", "my", "of",
+  "on", "or", "our", "that", "the", "then", "these", "this", "those", "to", "was", "we",
+  "were", "what", "when", "where", "who", "why", "with", "you", "your"
+]);
+
+function queryTerms(query: string) {
+  return (query.toLowerCase().match(/[a-z0-9][a-z0-9'-]*/g) ?? [])
+    .filter(term => !SEARCH_STOP_WORDS.has(term));
 }
 
 async function selectAll(sb: SupabaseClient, table: string) {
