@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import type { Journal } from "@/lib/types";
 
@@ -9,6 +9,7 @@ export default function JournalPage() {
   const [today, setToday] = useState<Journal | null>(null);
   const [draft, setDraft] = useState({ win: "", lesson: "", followup: "", mood: "", energy: 7 });
   const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
   const todayStr = new Date().toISOString().slice(0, 10);
 
   async function load() {
@@ -63,6 +64,8 @@ export default function JournalPage() {
 
     await load();
     setSaving(false);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 2400);
   }
 
   return (
@@ -119,7 +122,19 @@ export default function JournalPage() {
               </div>
             </div>
 
-            <div className="flex justify-end pt-3" style={{ borderTop: "0.5px solid rgba(255,255,255,0.06)" }}>
+            <div className="flex items-center justify-between pt-3" style={{ borderTop: "0.5px solid rgba(255,255,255,0.06)" }}>
+              <div className="font-mono text-[10px] tracking-[0.18em] uppercase">
+                {savedFlash ? (
+                  <span className="inline-flex items-center gap-1.5 text-text-1">
+                    <Check className="w-3 h-3" />
+                    Saved · also captured to Mnemos memory
+                  </span>
+                ) : today ? (
+                  <span className="text-text-4">existing entry · edits will overwrite</span>
+                ) : (
+                  <span className="text-text-4">new entry for today</span>
+                )}
+              </div>
               <button
                 onClick={save}
                 disabled={saving}
@@ -133,30 +148,40 @@ export default function JournalPage() {
           </div>
         </section>
 
-        {/* past entries */}
+        {/* recent entries — includes today so user sees save reflected */}
         <div className="mb-3 flex items-baseline justify-between">
-          <span className="h-micro">Past entries</span>
-          <span className="font-mono text-[10px] tracking-[0.16em] text-text-4 uppercase">{journals.filter(j => j.date !== todayStr).length}</span>
+          <span className="h-micro">Recent entries</span>
+          <span className="font-mono text-[10px] tracking-[0.16em] text-text-4 uppercase">{journals.length}</span>
         </div>
 
         <div className="space-y-2">
-          {journals.filter(j => j.date !== todayStr).map(j => (
-            <div key={j.id} className="bento-tight">
-              <div className="flex items-baseline justify-between mb-2">
-                <div className="font-mono text-[11px] tracking-wider uppercase text-text-2">{j.date}</div>
-                <div className="font-mono text-[10px] text-text-4 tracking-wider">
-                  {j.mood ?? ""}{j.mood && j.energy ? " · " : ""}{j.energy ? `energy ${j.energy}/10` : ""}
+          {journals.map(j => {
+            const isToday = j.date === todayStr;
+            return (
+              <div key={j.id} className="bento-tight" style={isToday ? { borderColor: "rgba(229,229,229,0.32)" } : undefined}>
+                <div className="flex items-baseline justify-between mb-2">
+                  <div className="flex items-baseline gap-2">
+                    <div className="font-mono text-[11px] tracking-wider uppercase text-text-2">{j.date}</div>
+                    {isToday && (
+                      <span className="font-mono text-[9px] tracking-[0.22em] uppercase px-1.5 py-0.5 rounded" style={{ background: "rgba(229,229,229,0.12)", color: "#F4F4F5" }}>
+                        today
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-mono text-[10px] text-text-4 tracking-wider">
+                    {j.mood ?? ""}{j.mood && j.energy ? " · " : ""}{j.energy ? `energy ${j.energy}/10` : ""}
+                  </div>
+                </div>
+                <div className="space-y-1.5 text-[13px] leading-relaxed">
+                  {j.win && <div className="text-text-1"><span className="h-micro mr-2">Win</span>{j.win}</div>}
+                  {j.lesson && <div className="text-text-2"><span className="h-micro mr-2">Lesson</span>{j.lesson}</div>}
+                  {j.followup && <div className="text-text-2"><span className="h-micro mr-2">Followup</span>{j.followup}</div>}
                 </div>
               </div>
-              <div className="space-y-1.5 text-[13px] leading-relaxed">
-                {j.win && <div className="text-text-1"><span className="h-micro mr-2">Win</span>{j.win}</div>}
-                {j.lesson && <div className="text-text-2"><span className="h-micro mr-2">Lesson</span>{j.lesson}</div>}
-                {j.followup && <div className="text-text-2"><span className="h-micro mr-2">Followup</span>{j.followup}</div>}
-              </div>
-            </div>
-          ))}
-          {journals.filter(j => j.date !== todayStr).length === 0 && (
-            <div className="text-center py-12 text-text-4 text-[12px]">No past entries yet.</div>
+            );
+          })}
+          {journals.length === 0 && (
+            <div className="text-center py-12 text-text-4 text-[12px]">No entries yet. Save above to start your streak.</div>
           )}
         </div>
       </div>

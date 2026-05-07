@@ -52,6 +52,18 @@
   ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
   ::selection { background: rgba(229, 229, 229, 0.18); color: #fff; }
+
+  /* native <select> dropdown options on dark UA */
+  select { color-scheme: dark; }
+  select option {
+    background: #0a0a0a;
+    color: #f4f4f5;
+  }
+  select option:checked,
+  select option:hover {
+    background: rgba(229, 229, 229, 0.18);
+    color: #ffffff;
+  }
 }
 
 @layer components {
