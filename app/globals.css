@@ -2,50 +2,239 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================================
+   Metakaihos / Physical Minimalism
+   Obsidian, but high-end hardware. Silver hairlines on void. No neon.
+   ============================================================================ */
+
 @layer base {
   :root {
-    --bg-0:#020407; --bg-1:#07090d; --bg-2:#0b1017; --bg-3:#101722; --bg-4:#182231;
-    --border:#1d2a36; --border-strong:#315064;
-    --text-1:#f4f4f5; --text-2:#a8a8b1; --text-3:#6b6b75; --text-4:#4a4a52;
-    --accent:#7dd3fc;
+    /* base tokens (per design spec) */
+    --bg-0: #050505;
+    --bg-1: rgba(20, 20, 20, 0.6);   /* surface_elevated */
+    --bg-2: rgba(28, 28, 30, 0.55);
+    --bg-3: rgba(38, 38, 40, 0.5);
+    --bg-4: #1a1a1d;
+
+    --silver: #E5E5E5;       /* accent_silver */
+    --silver-soft: rgba(229, 229, 229, 0.72);
+    --silver-faint: rgba(229, 229, 229, 0.18);
+
+    --text-1: #F4F4F5;
+    --text-2: #A1A1AA;
+    --text-3: #71717A;       /* zinc 500 — text_muted */
+    --text-4: #52525B;
+
+    --border: rgba(255, 255, 255, 0.08);   /* hairline border */
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --border-active: rgba(229, 229, 229, 0.55);
+
+    --accent: var(--silver);
+
+    --radius: 12px;
+    --radius-sm: 8px;
+
+    --blur-soft: blur(20px);
+    --blur-deep: blur(40px);
   }
-  body { @apply bg-bg-0 text-text-1 font-sans antialiased overflow-hidden; font-size:14px; }
-  ::-webkit-scrollbar { width:8px; height:8px; }
-  ::-webkit-scrollbar-track { background:transparent; }
-  ::-webkit-scrollbar-thumb { background:var(--bg-4); border-radius:4px; border:2px solid var(--bg-0); }
-  ::-webkit-scrollbar-thumb:hover { background:var(--border-strong); }
+
+  body {
+    @apply bg-bg-0 text-text-1 antialiased overflow-hidden;
+    font-family: "Geist Sans", "Geist", Inter, system-ui, sans-serif;
+    font-size: 13.5px;
+    font-feature-settings: "ss01", "cv11";
+    letter-spacing: -0.005em;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+  ::selection { background: rgba(229, 229, 229, 0.18); color: #fff; }
 }
 
 @layer components {
-  .pill { @apply inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-md bg-bg-2 text-text-2 text-xs font-medium border border-border cursor-pointer transition-all hover:bg-bg-3 hover:border-border-strong hover:text-text-1 select-none whitespace-nowrap; }
-  .pill.active { @apply bg-accent border-accent text-black font-semibold; }
-  .h-section { @apply text-[11px] uppercase tracking-wider text-text-3 font-semibold; }
-  .type-badge { @apply inline-flex items-center h-[18px] px-1.5 rounded text-[10px] font-semibold lowercase; }
-  .mem-card { @apply p-3 bg-bg-1 border border-border rounded-lg cursor-pointer transition-all hover:bg-bg-2 hover:border-border-strong hover:-translate-y-px; }
-  .hud-panel { @apply border border-cyan-300/20 bg-black/45 backdrop-blur-md rounded-md shadow-[0_0_34px_rgba(34,211,238,0.08),inset_0_0_28px_rgba(125,211,252,0.03)]; }
-  .data-row { @apply flex items-center justify-between gap-3 h-7 px-2 bg-white/[0.03] border border-white/10 rounded text-[11px] text-text-2; }
-  .hud-chip { @apply inline-flex items-center gap-1.5 px-2 py-1 rounded border border-cyan-300/15 bg-cyan-300/[0.06] text-[10px] text-cyan-100; }
-  .hud-chip span { @apply font-mono text-text-4; }
+  /* ----- bento tile: the foundational hairline-bordered surface ----- */
+  .bento {
+    background: var(--bg-1);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    backdrop-filter: var(--blur-deep);
+    -webkit-backdrop-filter: var(--blur-deep);
+  }
+  .bento-tight { @apply bento p-3; }
+  .bento-card  { @apply bento p-4; }
+
+  /* ----- micro section header (corner labels, sidebar groups) ----- */
+  .h-micro {
+    font-family: "Geist Mono", "Geist", ui-monospace, monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    font-weight: 500;
+  }
+
+  /* ----- pill (filter chip) ----- */
+  .pill {
+    @apply inline-flex items-center gap-1.5 h-[24px] px-2.5 rounded-md text-text-2 text-xs font-medium cursor-pointer transition-colors select-none whitespace-nowrap;
+    background: rgba(255,255,255,0.025);
+    border: 0.5px solid var(--border);
+  }
+  .pill:hover { background: rgba(255,255,255,0.05); border-color: var(--border-strong); color: var(--text-1); }
+  .pill.active {
+    background: rgba(229, 229, 229, 0.92);
+    border-color: rgba(229, 229, 229, 0.92);
+    color: #0a0a0a;
+    font-weight: 500;
+  }
+
+  /* ----- icon dock button ----- */
+  .dock-btn {
+    @apply flex items-center justify-center w-10 h-10 rounded-md text-text-3 transition-all relative;
+  }
+  .dock-btn:hover { color: var(--text-1); background: rgba(255,255,255,0.04); }
+  .dock-btn.active {
+    color: var(--silver);
+    background: rgba(229, 229, 229, 0.06);
+  }
+  .dock-btn.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 16px;
+    width: 1px;
+    background: var(--silver);
+  }
+
+  /* ----- hover tooltip for dock labels ----- */
+  .dock-tip {
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(15, 15, 15, 0.92);
+    border: 0.5px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--text-1);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+    backdrop-filter: var(--blur-soft);
+    -webkit-backdrop-filter: var(--blur-soft);
+    z-index: 50;
+  }
+  .dock-btn:hover .dock-tip { opacity: 1; }
+
+  /* ----- small numeric / metric chip ----- */
+  .stat-chip {
+    @apply flex flex-col gap-0.5 px-3 py-2 rounded-lg;
+    background: rgba(255,255,255,0.02);
+    border: 0.5px solid var(--border);
+  }
+  .stat-chip .stat-label {
+    font-family: "Geist Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .stat-chip .stat-value {
+    font-family: "Geist Mono", monospace;
+    font-size: 18px;
+    color: var(--text-1);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+
+  /* ----- memory card ----- */
+  .mem-card {
+    @apply p-3 rounded-lg cursor-pointer transition-all;
+    background: rgba(255,255,255,0.02);
+    border: 0.5px solid var(--border);
+  }
+  .mem-card:hover {
+    background: rgba(255,255,255,0.045);
+    border-color: var(--border-strong);
+    transform: translateY(-0.5px);
+  }
+
+  /* ----- type badge (kept neutral) ----- */
+  .type-badge {
+    @apply inline-flex items-center h-[18px] px-1.5 rounded text-[10px] font-medium lowercase;
+    background: rgba(255,255,255,0.06);
+    color: var(--text-2);
+    border: 0.5px solid var(--border);
+  }
+
+  /* ----- HUD legacy compat (referenced from GraphCommandDeck) ----- */
+  .hud-panel { @apply bento p-3; }
+  .data-row {
+    @apply flex items-center justify-between gap-3 h-7 px-2.5 rounded text-[11px] text-text-2;
+    background: rgba(255,255,255,0.02);
+    border: 0.5px solid var(--border);
+  }
+  .hud-chip {
+    @apply inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] text-text-2;
+    border: 0.5px solid var(--border);
+    background: rgba(255,255,255,0.03);
+  }
+  .hud-chip span { font-family: "Geist Mono", monospace; color: var(--text-3); }
 }
 
-.pulse-dot { animation:pulse 2.5s cubic-bezier(0.4,0,0.6,1) infinite; }
-@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
-.fade-in { animation:fadeIn 0.4s ease both; }
-@keyframes fadeIn { from{opacity:0;transform:translateY(4px);} to{opacity:1;transform:translateY(0);} }
+/* ----- soft spring scale-in (panels, drawers, popovers) ----- */
+@keyframes spring-in {
+  0%   { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.fade-in     { animation: spring-in 220ms cubic-bezier(0.22, 0.85, 0.36, 1) both; }
+.spring-in   { animation: spring-in 220ms cubic-bezier(0.22, 0.85, 0.36, 1) both; }
 
-/* deep void — pure black with the faintest core warmth, like looking out a window into space */
-/* NOTE: do not set position here — JSX uses Tailwind `absolute inset-0`. */
+@keyframes slide-from-right {
+  0%   { opacity: 0; transform: translateX(8px) scale(0.985); }
+  100% { opacity: 1; transform: translateX(0)   scale(1); }
+}
+.drawer-in { animation: slide-from-right 240ms cubic-bezier(0.22, 0.85, 0.36, 1) both; }
+
+@keyframes pulse-soft { 0%,100% { opacity: 0.92; } 50% { opacity: 0.55; } }
+.pulse-dot { animation: pulse-soft 2.6s ease-in-out infinite; }
+
+/* ----- graph stage: pure void, faint center warmth, NO grid, NO scanline ----- */
 .graph-stage {
   background:
-    radial-gradient(circle at 50% 50%, rgba(20, 28, 42, 0.35), transparent 35%),
-    #02050a;
+    radial-gradient(circle at 50% 55%, rgba(20, 22, 28, 0.30), transparent 40%),
+    #050505;
 }
 
-.graph-titleplate {
-  position: absolute;
-  top: 22px;
-  left: 205px;
-  z-index: 10;
-  padding: 10px 12px;
-  border-left: 1px solid rgba(125,211,252,0.35);
+/* ----- focus blanket: when a memory is selected, dim the rest of the world ----- */
+.focus-blanket {
+  background: rgba(5, 5, 5, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* ----- command-k palette ----- */
+.cmdk-overlay {
+  position: fixed; inset: 0;
+  background: rgba(5, 5, 5, 0.55);
+  backdrop-filter: var(--blur-soft);
+  -webkit-backdrop-filter: var(--blur-soft);
+  z-index: 100;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 18vh;
+}
+.cmdk-panel {
+  width: min(560px, 92vw);
+  background: rgba(15, 15, 15, 0.78);
+  border: 0.5px solid var(--border-strong);
+  border-radius: var(--radius);
+  backdrop-filter: var(--blur-deep);
+  -webkit-backdrop-filter: var(--blur-deep);
+  overflow: hidden;
 }

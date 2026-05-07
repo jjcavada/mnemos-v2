@@ -5,15 +5,36 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: { 0:"#08080a", 1:"#0e0e11", 2:"#16161a", 3:"#1d1d22", 4:"#26262c" },
-        border: { DEFAULT:"#2a2a30", strong:"#3a3a43" },
-        text: { 1:"#f4f4f5", 2:"#a8a8b1", 3:"#6b6b75", 4:"#4a4a52" },
-        accent: { DEFAULT:"#818cf8", bright:"#a5b4fc" },
-        life: "#4a4a52"
+        bg: {
+          0: "#050505",
+          1: "rgba(20, 20, 20, 0.6)",
+          2: "rgba(28, 28, 30, 0.55)",
+          3: "rgba(38, 38, 40, 0.5)",
+          4: "#1a1a1d"
+        },
+        border: {
+          DEFAULT: "rgba(255, 255, 255, 0.08)",
+          strong: "rgba(255, 255, 255, 0.16)"
+        },
+        text: {
+          1: "#F4F4F5",
+          2: "#A1A1AA",
+          3: "#71717A",
+          4: "#52525B"
+        },
+        accent: {
+          DEFAULT: "#E5E5E5",
+          bright: "#FFFFFF"
+        },
+        life: "#52525B"
       },
       fontFamily: {
-        sans: ["Inter","-apple-system","BlinkMacSystemFont","sans-serif"],
-        mono: ["JetBrains Mono","ui-monospace","monospace"]
+        sans: ["Geist Sans", "Geist", "Inter", "system-ui", "sans-serif"],
+        mono: ["Geist Mono", "Geist", "ui-monospace", "monospace"]
+      },
+      borderRadius: {
+        DEFAULT: "8px",
+        lg: "12px"
       }
     }
   },
