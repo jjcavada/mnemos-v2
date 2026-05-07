@@ -26,6 +26,51 @@ type Link = { source: string; target: string; relation: string };
 
 const ME_ID = "me:jay";
 
+type GalaxyStar = { x: number; y: number; size: number; alpha: number; hue: "white" | "warm" | "cool" };
+
+function generateGalaxyStars(count = 280): GalaxyStar[] {
+  // deterministic seed so the galaxy looks the same every render
+  let seed = 9133;
+  const rand = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+  const stars: GalaxyStar[] = [];
+  // 2-arm logarithmic spiral
+  const arms = 2;
+  const armSpread = 0.55; // how tightly clustered to the arm line
+  for (let i = 0; i < count; i++) {
+    const t = rand();              // 0..1, fraction along radius
+    const arm = Math.floor(rand() * arms);
+    const armOffset = (arm / arms) * Math.PI * 2;
+    // logarithmic spiral: angle grows with radius
+    const radius = 6 + Math.pow(t, 0.55) * 70;
+    const baseAngle = armOffset + radius * 0.10;
+    const angle = baseAngle + (rand() - 0.5) * armSpread * (1 - t * 0.6);
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius * 0.42; // flatten to disc
+    const size = 0.35 + rand() * 1.2 * (1 - t * 0.5);
+    const alpha = 0.32 + rand() * 0.55 * (1 - t * 0.4);
+    const hue = rand() < 0.15 ? "warm" : rand() < 0.18 ? "cool" : "white";
+    stars.push({ x, y, size, alpha, hue });
+  }
+  // a few brighter foreground stars across the disc
+  for (let i = 0; i < 24; i++) {
+    const r = 8 + rand() * 60;
+    const a = rand() * Math.PI * 2;
+    stars.push({
+      x: Math.cos(a) * r,
+      y: Math.sin(a) * r * 0.42,
+      size: 0.9 + rand() * 1.1,
+      alpha: 0.7 + rand() * 0.3,
+      hue: rand() < 0.2 ? "warm" : "white"
+    });
+  }
+  return stars;
+}
+
+const GALAXY_STARS: GalaxyStar[] = generateGalaxyStars();
+
 export function Graph2D() {
   const { memories, relationships, projectsById, lifeAreas, select, selected, filters } = useMemoriesStore();
   const fgRef = useRef<any>(null);
@@ -387,76 +432,103 @@ export function Graph2D() {
           ctx.save();
           ctx.globalAlpha = dimmed ? 0.18 : pulseAlpha;
 
-          // ----- ME: high-mass silver disc, thicker rim, breathing rings, soft halo -----
+          // ----- ME: rotating spiral galaxy at the heart of the brain -----
           if (node.kind === "me") {
-            // outer hairline rings (breathing-room markers)
-            ctx.strokeStyle = "rgba(229,229,229,0.22)";
+            // breathing-room markers (kept for design continuity)
+            ctx.strokeStyle = "rgba(229,229,229,0.18)";
             ctx.lineWidth = 0.7 / scale;
             ctx.beginPath();
-            ctx.arc(node.x, drawY, 56, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.beginPath();
             ctx.arc(node.x, drawY, 96, 0, Math.PI * 2);
-            ctx.strokeStyle = "rgba(229,229,229,0.10)";
+            ctx.stroke();
+            ctx.strokeStyle = "rgba(229,229,229,0.08)";
+            ctx.beginPath();
+            ctx.arc(node.x, drawY, 134, 0, Math.PI * 2);
             ctx.stroke();
 
-            // soft halo
-            ctx.globalCompositeOperation = "lighter";
-            const halo = ctx.createRadialGradient(node.x, drawY, 0, node.x, drawY, r * 6);
-            halo.addColorStop(0, "rgba(229,229,229,0.28)");
-            halo.addColorStop(0.5, "rgba(229,229,229,0.08)");
-            halo.addColorStop(1, "rgba(229,229,229,0)");
-            ctx.fillStyle = halo;
+            // galaxy is rendered in its own coordinate frame, slowly rotating
+            ctx.save();
+            ctx.translate(node.x, drawY);
+            const time = Date.now();
+            const rotation = time / 22000; // very slow rotation
+            ctx.rotate(rotation);
+
+            // outer disc halo — purplish/dark, fades far out
+            const haloGrad = ctx.createRadialGradient(0, 0, 18, 0, 0, 92);
+            haloGrad.addColorStop(0, "rgba(120, 96, 130, 0.10)");
+            haloGrad.addColorStop(0.45, "rgba(70, 70, 100, 0.06)");
+            haloGrad.addColorStop(1, "rgba(20, 20, 40, 0)");
+            ctx.fillStyle = haloGrad;
             ctx.beginPath();
-            ctx.arc(node.x, drawY, r * 6, 0, Math.PI * 2);
+            ctx.ellipse(0, 0, 92, 40, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // mid-disc warm wash (the underglow of the spiral arms)
+            const midGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, 70);
+            midGrad.addColorStop(0, "rgba(255, 210, 150, 0.45)");
+            midGrad.addColorStop(0.25, "rgba(220, 170, 130, 0.20)");
+            midGrad.addColorStop(0.7, "rgba(120, 100, 130, 0.08)");
+            midGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+            ctx.fillStyle = midGrad;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 70, 30, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // stars on the spiral arms (additive blend so they bloom)
+            ctx.globalCompositeOperation = "lighter";
+            for (const s of GALAXY_STARS) {
+              ctx.globalAlpha = s.alpha;
+              ctx.fillStyle =
+                s.hue === "warm" ? "rgba(255, 220, 165, 1)"
+                : s.hue === "cool" ? "rgba(190, 210, 255, 1)"
+                : "rgba(255, 255, 255, 1)";
+              ctx.beginPath();
+              ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = "source-over";
+            ctx.restore();
+
+            // bright core (drawn in canvas-space, NOT rotated, so the core stays sharp)
+            ctx.save();
+            ctx.globalCompositeOperation = "lighter";
+            // wide soft outer bloom
+            const bloomGrad = ctx.createRadialGradient(node.x, drawY, 0, node.x, drawY, 22);
+            bloomGrad.addColorStop(0, "rgba(255, 245, 220, 0.95)");
+            bloomGrad.addColorStop(0.4, "rgba(255, 220, 180, 0.40)");
+            bloomGrad.addColorStop(1, "rgba(255, 200, 150, 0)");
+            ctx.fillStyle = bloomGrad;
+            ctx.beginPath();
+            ctx.arc(node.x, drawY, 22, 0, Math.PI * 2);
+            ctx.fill();
+            // tight hot core
+            const coreGrad = ctx.createRadialGradient(node.x, drawY, 0, node.x, drawY, 8);
+            coreGrad.addColorStop(0, "rgba(255, 255, 255, 1)");
+            coreGrad.addColorStop(0.5, "rgba(255, 240, 210, 0.85)");
+            coreGrad.addColorStop(1, "rgba(255, 220, 160, 0)");
+            ctx.fillStyle = coreGrad;
+            ctx.beginPath();
+            ctx.arc(node.x, drawY, 8, 0, Math.PI * 2);
+            ctx.fill();
+            // pure white pinhole
+            ctx.fillStyle = "rgba(255, 255, 255, 1)";
+            ctx.beginPath();
+            ctx.arc(node.x, drawY, 1.6, 0, Math.PI * 2);
             ctx.fill();
             ctx.globalCompositeOperation = "source-over";
+            ctx.restore();
 
-            // V3: thicker silver rim — high-mass treatment
-            ctx.strokeStyle = "rgba(229,229,229,0.95)";
-            ctx.lineWidth = 2.4 / scale;
-            ctx.beginPath();
-            ctx.arc(node.x, drawY, r + 4, 0, Math.PI * 2);
-            ctx.stroke();
-            // inner accent ring
-            ctx.strokeStyle = "rgba(229,229,229,0.45)";
-            ctx.lineWidth = 0.6 / scale;
-            ctx.beginPath();
-            ctx.arc(node.x, drawY, r + 7, 0, Math.PI * 2);
-            ctx.stroke();
-
-            // disc fill
-            ctx.fillStyle = "#E5E5E5";
-            ctx.beginPath();
-            ctx.arc(node.x, drawY, r, 0, Math.PI * 2);
-            ctx.fill();
-
-            // dark interior ring (lens)
-            ctx.fillStyle = "#050505";
-            ctx.beginPath();
-            ctx.arc(node.x, drawY, r * 0.55, 0, Math.PI * 2);
-            ctx.fill();
-
-            // bloom pupil
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = "rgba(255,255,255,0.6)";
-            ctx.fillStyle = "#FFFFFF";
-            ctx.beginPath();
-            ctx.arc(node.x, drawY, r * 0.18, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-
-            // label below the breathing-ring
+            // label below the galaxy disc
             const fs = Math.max(11 / scale, 4);
             ctx.font = `600 ${fs}px Geist Sans, Inter, system-ui, sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillStyle = "#E5E5E5";
-            ctx.fillText("JAY", node.x, node.y + 70);
+            ctx.fillText("JAY", node.x, node.y + 108);
             const sublabelFs = Math.max(8 / scale, 3);
             ctx.font = `400 ${sublabelFs}px Geist Mono, monospace`;
             ctx.fillStyle = "rgba(161,161,170,0.7)";
-            ctx.fillText("THE PERSON", node.x, node.y + 70 + sublabelFs + 4);
+            ctx.fillText("THE PERSON", node.x, node.y + 108 + sublabelFs + 4);
 
             ctx.restore();
             return;
