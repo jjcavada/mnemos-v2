@@ -622,6 +622,70 @@ export type EntityDetail = {
   memories: Memory[];
 };
 
+/**
+ * Upsert a single memory representing a journal entry for a given date.
+ * Idempotent: re-saving the same date updates the existing row; never duplicates.
+ */
+export async function upsertJournalMemory(input: {
+  date: string;             // YYYY-MM-DD
+  content: string;
+  summary?: string | null;
+  mood?: string | null;
+  energy?: number | null;
+  importance?: number;
+}): Promise<Memory> {
+  const sb = serverSupabase();
+  const date = input.date.slice(0, 10);
+
+  // find an existing journal-tagged memory for this date
+  const { data: existingRows } = await sb
+    .from("memories")
+    .select(MEMORY_SELECT)
+    .contains("tags", ["journal", date])
+    .limit(1);
+
+  const embedding = await createEmbedding(input.content);
+  const summary = input.summary?.trim() || `Journal · ${date}`;
+
+  const payload: JsonObject = {
+    content: input.content,
+    summary,
+    type: "journal",
+    status: "active",
+    source: "manual",
+    project_id: null,
+    tags: ["journal", "daily-reflection", date],
+    source_metadata: { journal_date: date, mood: input.mood ?? null, energy: input.energy ?? null },
+    importance_score: clampImportance(input.importance, 0.65),
+    life_area: "other",
+    is_project: false,
+    entities: [],
+    mood: input.mood ?? null,
+    occurred_at: new Date(`${date}T12:00:00.000Z`).toISOString()
+  };
+  if (embedding) payload.embedding = embedding;
+
+  const existing = existingRows?.[0] as Memory | undefined;
+  if (existing) {
+    const { data, error } = await sb
+      .from("memories")
+      .update(payload)
+      .eq("id", existing.id)
+      .select(MEMORY_SELECT)
+      .single();
+    if (error) throw new Error(`Update journal failed: ${error.message}`);
+    return data as Memory;
+  }
+
+  const { data, error } = await sb
+    .from("memories")
+    .insert(payload)
+    .select(MEMORY_SELECT)
+    .single();
+  if (error) throw new Error(`Insert journal failed: ${error.message}`);
+  return data as Memory;
+}
+
 export async function listEntities(): Promise<Entity[]> {
   const sb = serverSupabase();
   const { data, error } = await sb.from("entities").select("*").order("name").limit(500);

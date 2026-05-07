@@ -32,36 +32,32 @@ export default function JournalPage() {
       await sb.from("journals").insert(payload);
     }
 
-    // Also write a parallel memory so the AI can recall this journal entry later.
-    // We build a single text blob from the structured fields + metadata.
-    const lines: string[] = [`Journal · ${todayStr}`];
+    // Also write/update a single memory so the AI can recall this journal day.
+    // /api/capture/journal is idempotent: one memory per date, re-saves update in place.
+    const lines: string[] = [];
     if (draft.win.trim())      lines.push(`Win: ${draft.win.trim()}`);
     if (draft.lesson.trim())   lines.push(`Lesson: ${draft.lesson.trim()}`);
     if (draft.followup.trim()) lines.push(`Followup: ${draft.followup.trim()}`);
     if (draft.mood.trim())     lines.push(`Mood: ${draft.mood.trim()}`);
     if (draft.energy)          lines.push(`Energy: ${draft.energy}/10`);
-    const text = lines.join("\n");
+    const content = lines.join("\n");
 
-    if (text.length > 20) {
+    if (content.length > 5) {
       try {
-        await fetch("/api/capture/chat", {
+        await fetch("/api/capture/journal", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            text,
-            title: `Journal · ${todayStr}`,
-            source: "manual",
-            tags: ["journal", "daily-reflection", todayStr],
-            is_project: false,
-            life_area: "other",
-            keep_raw: true,
-            importance: 0.65,
-            occurred_at: new Date(`${todayStr}T12:00:00`).toISOString(),
-            mood: draft.mood.trim() || undefined
+            date: todayStr,
+            content,
+            summary: `Journal · ${todayStr}`,
+            mood: draft.mood.trim() || null,
+            energy: draft.energy ?? null,
+            importance: 0.65
           })
         });
       } catch {
-        // non-blocking: journal saved to journals table even if capture fails
+        // non-blocking: journal still saved to journals table even if capture fails
       }
     }
 
