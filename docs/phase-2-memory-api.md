@@ -62,7 +62,7 @@ Behavior:
 
 Behavior:
 
-- with a valid bearer token and `OPENAI_API_KEY`, embeds the query and calls `search_memories_hybrid`
+- with a valid bearer token and `OPENAI_API_KEY`, embeds the query and calls the live `search_memories` RPC
 - without a bearer token, uses cheap keyword fallback only so the public UI cannot spend OpenAI credits
 
 `POST /api/context` returns a Markdown context pack for pasting into a future AI session. Requires bearer auth.

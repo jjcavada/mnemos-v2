@@ -211,9 +211,12 @@ export async function searchMemories(
   if (cleanQuery && options.allowEmbedding) {
     const embedding = await createEmbedding(cleanQuery);
     if (embedding) {
-      const { data, error } = await sb.rpc("search_memories_hybrid", {
+      const { data, error } = await sb.rpc("search_memories", {
         query_text: cleanQuery,
         query_embedding: embedding,
+        filter_tags: normalizeTags(filters.tags ?? []),
+        filter_project_slug: filters.project ?? null,
+        filter_type: filters.type ?? null,
         match_count: limit * 3
       });
       if (!error && Array.isArray(data)) rpcRows = data as MemorySearchResult[];
