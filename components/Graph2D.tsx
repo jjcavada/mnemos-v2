@@ -14,6 +14,8 @@ type Node = {
   size: number;
   x: number;
   y: number;
+  fx: number;
+  fy: number;
   mem: Memory;
 };
 type Link = { source: string; target: string; relation: string };
@@ -55,19 +57,23 @@ export function Graph2D() {
       clusterSeen[key] = seen + 1;
       const count = clusterCounts[key] ?? 1;
       const clusterAngle = ((clusterIndex.get(key) ?? 0) / Math.max(clusters.length, 1)) * Math.PI * 2 - Math.PI / 2;
-      const clusterRadius = clusters.length > 1 ? 250 : 0;
+      const clusterRadius = clusters.length > 1 ? 145 : 0;
       const clusterX = Math.cos(clusterAngle) * clusterRadius;
       const clusterY = Math.sin(clusterAngle) * clusterRadius;
       const localAngle = (seen / count) * Math.PI * 2 + (absoluteIndex % 3) * 0.18;
-      const localRadius = 28 + Math.sqrt(count) * 8 + (seen % 5) * 6;
+      const localRadius = 22 + Math.sqrt(count) * 5 + (seen % 5) * 4;
+      const x = clusterX + Math.cos(localAngle) * localRadius;
+      const y = clusterY + Math.sin(localAngle) * localRadius;
 
       return {
         id: m.id,
         label: m.summary || m.content.slice(0, 60),
         color: memoryColor(m, projectsById),
-        size: 3.2 + Math.sqrt(connCount[m.id] ?? 0) * 1.4 + (m.importance_score ?? 0.5),
-        x: clusterX + Math.cos(localAngle) * localRadius,
-        y: clusterY + Math.sin(localAngle) * localRadius,
+        size: 4 + Math.sqrt(connCount[m.id] ?? 0) * 1.35 + (m.importance_score ?? 0.5),
+        x,
+        y,
+        fx: x,
+        fy: y,
         mem: m
       };
     });
@@ -93,8 +99,15 @@ export function Graph2D() {
     return "dim";
   }
 
+  function fitGraph(duration = 700) {
+    const fg = fgRef.current;
+    if (!fg) return;
+    fg.zoomToFit(duration, 155);
+    window.setTimeout(() => fg.centerAt(65, 0, Math.min(duration, 500)), duration + 30);
+  }
+
   useEffect(() => {
-    const t = setTimeout(() => fgRef.current?.zoomToFit(900, 90), 900);
+    const t = setTimeout(() => fitGraph(900), 700);
     return () => clearTimeout(t);
   }, [data]);
 
@@ -109,10 +122,10 @@ export function Graph2D() {
         cooldownTicks={90}
         cooldownTime={4000}
         d3VelocityDecay={0.22}
-        onEngineStop={() => fgRef.current?.zoomToFit(700, 120)}
+        onEngineStop={() => fitGraph(500)}
         linkColor={(l: any) => {
           const focus = selectedId ?? hovered;
-          if (!focus) return "rgba(125,211,252,0.18)";
+          if (!focus) return "rgba(125,211,252,0.34)";
           const sId = typeof l.source === "object" ? l.source.id : l.source;
           const tId = typeof l.target === "object" ? l.target.id : l.target;
           if (sId === focus || tId === focus) return RELATION_EDGE_COLORS[l.relation] ?? "#a8a8b1";
@@ -120,7 +133,7 @@ export function Graph2D() {
         }}
         linkWidth={(l: any) => {
           const focus = selectedId ?? hovered;
-          if (!focus) return 0.6;
+          if (!focus) return 1;
           const sId = typeof l.source === "object" ? l.source.id : l.source;
           const tId = typeof l.target === "object" ? l.target.id : l.target;
           return (sId === focus || tId === focus) ? 1.9 : 0.45;
@@ -231,7 +244,7 @@ export function Graph2D() {
           select(n.mem);
         }}
         onNodeHover={(n: any) => setHovered(n?.id ?? null)}
-        onBackgroundClick={() => { setSelectedId(null); fgRef.current?.zoomToFit(700, 90); }}
+        onBackgroundClick={() => { setSelectedId(null); fitGraph(700); }}
       />
     </div>
   );
