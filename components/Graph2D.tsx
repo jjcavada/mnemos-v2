@@ -36,6 +36,16 @@ const ROOT_GLOW = "#fbbf24";   // warm amber
 const TIER_1_GLOW = "#7dd3fc"; // ice cyan
 const TIER_2_GLOW = "#a5b4fc"; // soft violet
 
+function hexWithAlpha(hex: string, a: number) {
+  // accept #rrggbb or #rgb; clamp alpha 0-1
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map(c => c + c).join("") : h;
+  const r = parseInt(full.slice(0, 2), 16) || 0;
+  const g = parseInt(full.slice(2, 4), 16) || 0;
+  const b = parseInt(full.slice(4, 6), 16) || 0;
+  return `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a))})`;
+}
+
 export function Graph2D() {
   const { memories, relationships, projectsById, select, filters } = useMemoriesStore();
   const fgRef = useRef<any>(null);
@@ -111,17 +121,42 @@ export function Graph2D() {
     const groupKeys = Array.from(new Set(filtered.map(groupKeyOf)));
     const otherGroups = groupKeys.filter(k => k !== rootGroupKey);
 
-    // place each non-root group at its own angle around the root
-    const SATELLITE_RADIUS = 280;
-    const groupCenter: Record<string, { gx: number; gy: number; localR: number }> = {};
-    if (rootGroupKey) groupCenter[rootGroupKey] = { gx: 0, gy: 0, localR: 70 };
+    // metadata per group (label + color) for auras / labels
+    const groupMeta: Record<string, { label: string; color: string }> = {};
+    for (const gk of groupKeys) {
+      const sample = filtered.find(m => groupKeyOf(m) === gk);
+      if (!sample) continue;
+      if (sample.is_project) {
+        const proj = sample.project_id ? projectsById[sample.project_id] : undefined;
+        groupMeta[gk] = {
+          label: (proj?.name ?? "PROJECT").toUpperCase(),
+          color: proj?.color ?? "#7dd3fc"
+        };
+      } else {
+        groupMeta[gk] = {
+          label: `LIFE · ${(sample.life_area ?? "other").toUpperCase()}`,
+          color: "#a8a8b1"
+        };
+      }
+    }
+
+    // place each non-root group at its own angle around the root, distributed evenly on a circle
+    const SATELLITE_RADIUS = 320;
+    const groupCenter: Record<string, { gx: number; gy: number; localR: number; label: string; color: string }> = {};
+    if (rootGroupKey) {
+      const meta = groupMeta[rootGroupKey] ?? { label: "ORIGIN", color: "#fbbf24" };
+      groupCenter[rootGroupKey] = { gx: 0, gy: 0, localR: 80, label: meta.label, color: meta.color };
+    }
     otherGroups.forEach((gk, i) => {
-      // distribute around 320 degrees (leaving a gap at the bottom for the decorative orbital)
-      const angle = (i / Math.max(otherGroups.length, 1)) * (Math.PI * 1.78) - Math.PI / 2 - 0.5;
+      // full 360 degree distribution, starting at top
+      const angle = (i / Math.max(otherGroups.length, 1)) * Math.PI * 2 - Math.PI / 2;
+      const meta = groupMeta[gk] ?? { label: "", color: "#7dd3fc" };
       groupCenter[gk] = {
         gx: Math.cos(angle) * SATELLITE_RADIUS,
         gy: Math.sin(angle) * SATELLITE_RADIUS,
-        localR: 55
+        localR: 60,
+        label: meta.label,
+        color: meta.color
       };
     });
 
@@ -179,15 +214,15 @@ export function Graph2D() {
     return m;
   }, [data]);
 
-  // force tuning — short intra-cluster links, long cross-cluster links, custom cluster pull
+  // force tuning — clusters lock tightly to their assigned center, charge keeps internal spacing
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg || data.nodes.length === 0) return;
     try {
       const charge = typeof fg.d3Force === "function" ? fg.d3Force("charge") : null;
       if (charge && typeof charge.strength === "function") {
-        charge.strength(-95);
-        if (typeof charge.distanceMax === "function") charge.distanceMax(320);
+        charge.strength(-65);
+        if (typeof charge.distanceMax === "function") charge.distanceMax(220);
       }
       const link = typeof fg.d3Force === "function" ? fg.d3Force("link") : null;
       if (link && typeof link.distance === "function") {
@@ -197,15 +232,20 @@ export function Graph2D() {
           const tId = typeof l.target === "object" ? l.target.id : l.target;
           const sg = groupMap.get(sId);
           const tg = groupMap.get(tId);
-          return sg && tg && sg === tg ? 32 : 180;
+          return sg && tg && sg === tg ? 26 : 200;
         });
-        if (typeof link.strength === "function") link.strength(0.6);
+        if (typeof link.strength === "function") link.strength((l: any) => {
+          const sId = typeof l.source === "object" ? l.source.id : l.source;
+          const tId = typeof l.target === "object" ? l.target.id : l.target;
+          const sg = groupMap.get(sId);
+          const tg = groupMap.get(tId);
+          return sg && tg && sg === tg ? 0.65 : 0.05; // intra-cluster locks tight; cross-cluster barely pulls
+        });
       }
-      // remove default centering force so groups don't all collapse to origin
       if (typeof fg.d3Force === "function") fg.d3Force("center", null);
-      // custom cluster force: each tick, pull every node toward its group center
+      // strong cluster pull — keeps each constellation locked to its assigned orbit
       const clusterPull = (alpha: number) => {
-        const k = 0.08 * alpha;
+        const k = 0.22 * alpha;
         for (const n of data.nodes as any[]) {
           if (n.isRoot) continue;
           const gc = data.groupCenter[n.groupKey];
@@ -301,18 +341,33 @@ export function Graph2D() {
           const focus = selectedId ?? hovered;
           const sId = typeof l.source === "object" ? l.source.id : l.source;
           const tId = typeof l.target === "object" ? l.target.id : l.target;
+          const sNode = data.nodes.find(n => n.id === sId);
+          const tNode = data.nodes.find(n => n.id === tId);
+          const sameCluster = sNode && tNode && sNode.groupKey === tNode.groupKey;
           const touchesRoot = sId === data.rootId || tId === data.rootId;
-          if (!focus) return touchesRoot ? "rgba(125,211,252,0.40)" : "rgba(125,211,252,0.18)";
+          if (!focus) {
+            // Only show intra-cluster + root-touching edges by default. Cross-cluster fade to nearly invisible.
+            if (sameCluster) return "rgba(125,211,252,0.30)";
+            if (touchesRoot) return "rgba(253,224,71,0.30)";
+            return "rgba(125,211,252,0.04)";
+          }
           if (sId === focus || tId === focus) return RELATION_EDGE_COLORS[l.relation] ?? "#a8a8b1";
-          return "rgba(70,80,95,0.07)";
+          return "rgba(70,80,95,0.05)";
         }}
         linkWidth={(l: any) => {
           const focus = selectedId ?? hovered;
           const sId = typeof l.source === "object" ? l.source.id : l.source;
           const tId = typeof l.target === "object" ? l.target.id : l.target;
+          const sNode = data.nodes.find(n => n.id === sId);
+          const tNode = data.nodes.find(n => n.id === tId);
+          const sameCluster = sNode && tNode && sNode.groupKey === tNode.groupKey;
           const touchesRoot = sId === data.rootId || tId === data.rootId;
-          if (!focus) return touchesRoot ? 1.1 : 0.55;
-          return (sId === focus || tId === focus) ? 1.9 : 0.4;
+          if (!focus) {
+            if (sameCluster) return 0.7;
+            if (touchesRoot) return 1.0;
+            return 0.3;
+          }
+          return (sId === focus || tId === focus) ? 1.9 : 0.35;
         }}
         linkDirectionalParticles={(l: any) => {
           const focus = selectedId ?? hovered;
@@ -346,22 +401,84 @@ export function Graph2D() {
           }
           ctx.restore();
 
-          // ---- single decorative outer orbital (curving around the constellation) ----
+          // ---- concentric orbital paths (planetary system motif) ----
           ctx.save();
+          // dotted radial guide rings
+          const dashed = [3, 5];
+          ctx.setLineDash(dashed);
+          ctx.lineWidth = 0.8;
+          [110, 220, 330].forEach((r, i) => {
+            ctx.strokeStyle = `rgba(125,211,252,${0.13 - i * 0.025})`;
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.stroke();
+          });
+          // outer system boundary — slightly stronger dashed
+          ctx.setLineDash([6, 8]);
           ctx.lineWidth = 1;
-          ctx.strokeStyle = "rgba(125,211,252,0.18)";
+          ctx.strokeStyle = "rgba(125,211,252,0.15)";
           ctx.beginPath();
-          // big tilted ellipse offset from origin so it sweeps below the constellation like a star-chart trajectory
-          ctx.ellipse(60, 110, 620, 410, 0.32, 0, Math.PI * 2);
+          ctx.arc(0, 0, 470, 0, Math.PI * 2);
           ctx.stroke();
-          // very faint core bloom at the origin so the root star sits in a soft glow
-          const coreGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, 130);
-          coreGlow.addColorStop(0, "rgba(251,191,36,0.08)");
+          ctx.setLineDash([]);
+
+          // ---- per-cluster auras (soft colored backdrops) ----
+          for (const gk of Object.keys(data.groupCenter)) {
+            const gc = data.groupCenter[gk];
+            const aura = ctx.createRadialGradient(gc.gx, gc.gy, 0, gc.gx, gc.gy, 130);
+            aura.addColorStop(0, hexWithAlpha(gc.color, 0.10));
+            aura.addColorStop(0.6, hexWithAlpha(gc.color, 0.03));
+            aura.addColorStop(1, hexWithAlpha(gc.color, 0));
+            ctx.fillStyle = aura;
+            ctx.beginPath();
+            ctx.arc(gc.gx, gc.gy, 130, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // ---- root core bloom + 4-spike lens flare ----
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          // core bloom
+          const coreGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, 160);
+          coreGlow.addColorStop(0, "rgba(253,224,71,0.30)");
+          coreGlow.addColorStop(0.4, "rgba(251,191,36,0.10)");
           coreGlow.addColorStop(1, "rgba(251,191,36,0)");
           ctx.fillStyle = coreGlow;
           ctx.beginPath();
-          ctx.arc(0, 0, 130, 0, Math.PI * 2);
+          ctx.arc(0, 0, 160, 0, Math.PI * 2);
           ctx.fill();
+          // 4 lens-flare spikes — gradient lines extending out
+          const spikeLen = 220;
+          const spikeGrad = (a: number) => {
+            const g = ctx.createLinearGradient(0, 0, Math.cos(a) * spikeLen, Math.sin(a) * spikeLen);
+            g.addColorStop(0, "rgba(253,224,71,0.65)");
+            g.addColorStop(0.4, "rgba(251,191,36,0.18)");
+            g.addColorStop(1, "rgba(251,191,36,0)");
+            return g;
+          };
+          const angles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
+          ctx.lineWidth = 1.4;
+          for (const a of angles) {
+            ctx.strokeStyle = spikeGrad(a);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(a) * spikeLen, Math.sin(a) * spikeLen);
+            ctx.stroke();
+          }
+          // diagonal spikes (shorter, fainter)
+          const diagLen = 140;
+          ctx.lineWidth = 0.8;
+          for (const a of [Math.PI / 4, Math.PI * 0.75, Math.PI * 1.25, Math.PI * 1.75]) {
+            const dg = ctx.createLinearGradient(0, 0, Math.cos(a) * diagLen, Math.sin(a) * diagLen);
+            dg.addColorStop(0, "rgba(253,224,71,0.35)");
+            dg.addColorStop(1, "rgba(251,191,36,0)");
+            ctx.strokeStyle = dg;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(a) * diagLen, Math.sin(a) * diagLen);
+            ctx.stroke();
+          }
+          ctx.restore();
           ctx.restore();
         }}
         nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, scale: number) => {
@@ -443,6 +560,32 @@ export function Graph2D() {
             ctx.fillText(label, node.x, node.y + r + 6);
           }
 
+          ctx.restore();
+        }}
+        onRenderFramePost={(ctx: CanvasRenderingContext2D, scale: number) => {
+          // cluster labels — drawn after nodes so they read clearly
+          ctx.save();
+          for (const gk of Object.keys(data.groupCenter)) {
+            const gc = data.groupCenter[gk];
+            if (!gc.label) continue;
+            const fontSize = Math.max(9 / scale, 3.2);
+            ctx.font = `600 ${fontSize}px JetBrains Mono, monospace`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "alphabetic";
+            // distance label outside the cluster's local radius
+            const labelOffset = (gc.gx === 0 && gc.gy === 0) ? -120 : 95;
+            const lx = gc.gx;
+            const ly = gc.gy + labelOffset;
+            ctx.fillStyle = hexWithAlpha(gc.color, 0.85);
+            ctx.fillText(gc.label, lx, ly);
+            // tiny horizontal tick under the label
+            ctx.strokeStyle = hexWithAlpha(gc.color, 0.5);
+            ctx.lineWidth = 0.7 / scale;
+            ctx.beginPath();
+            ctx.moveTo(lx - 28, ly + 5);
+            ctx.lineTo(lx + 28, ly + 5);
+            ctx.stroke();
+          }
           ctx.restore();
         }}
         nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
