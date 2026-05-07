@@ -37,7 +37,7 @@ export function Graph2D() {
       mem: m
     }));
     return { nodes, links };
-  }, [memories, relationships, projects, filters]);
+  }, [memories, relationships, projectsById, filters]);
 
   const neighborMap = useMemo(() => {
     const m: Record<string, Set<string>> = {};

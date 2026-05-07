@@ -7,7 +7,7 @@ import { memoryColor, RELATION_EDGE_COLORS } from "@/lib/colors";
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), { ssr: false });
 
 export function Graph3D() {
-  const { memories, relationships, projectsById, select } = useMemoriesStore();
+  const { memories, relationships, projectsById, select, filters } = useMemoriesStore();
   const ref = useRef<any>(null);
 
   const data = useMemo(() => {
@@ -21,7 +21,7 @@ export function Graph3D() {
       color: memoryColor(m, projectsById), val: m.tags?.length ? m.tags.length + 1 : 1, mem: m
     }));
     return { nodes, links };
-  }, [memories, relationships, projects]);
+  }, [memories, relationships, projectsById, filters]);
 
   return (
     <div className="absolute inset-0">
