@@ -9,12 +9,17 @@ These routes turn v2 from a dashboard into an ingestion and recall surface.
 - `SUPABASE_SERVICE_ROLE_KEY` for trusted server writes; routes can fall back to anon RLS where policies allow it
 - `OPENAI_API_KEY` for distillation and embeddings
 - `OPENAI_DISTILL_MODEL` optional; defaults to `gpt-4o-mini`
+- `MNEMOS_API_TOKEN` for protected capture, context, digest, export, and semantic search
 
 Without `OPENAI_API_KEY`, capture still stores raw text, but distilled memories and embeddings degrade to deterministic fallback.
+
+Never expose `MNEMOS_API_TOKEN` in browser code. Use it from MCP, server-to-server scripts, or trusted automation only.
 
 ## Capture
 
 `POST /api/capture/chat`
+
+Requires `Authorization: Bearer $MNEMOS_API_TOKEN`.
 
 ```json
 {
@@ -57,14 +62,14 @@ Behavior:
 
 Behavior:
 
-- with `OPENAI_API_KEY`, embeds the query and calls `search_memories_hybrid`
-- without `OPENAI_API_KEY`, falls back to server keyword scoring
+- with a valid bearer token and `OPENAI_API_KEY`, embeds the query and calls `search_memories_hybrid`
+- without a bearer token, uses cheap keyword fallback only so the public UI cannot spend OpenAI credits
 
-`POST /api/context` returns a Markdown context pack for pasting into a future AI session.
+`POST /api/context` returns a Markdown context pack for pasting into a future AI session. Requires bearer auth.
 
 ## Export
 
-`GET /api/export` returns a portable JSON archive with virtual files:
+`GET /api/export` requires bearer auth and returns a portable JSON archive with virtual files:
 
 - `memories.jsonl`
 - `jay-profile.md`

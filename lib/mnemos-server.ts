@@ -196,14 +196,19 @@ export async function captureChat(body: CaptureChatBody): Promise<CaptureResult>
   };
 }
 
-export async function searchMemories(query: string, k = 12, filters: SearchFilters = {}): Promise<MemorySearchResult[]> {
+export async function searchMemories(
+  query: string,
+  k = 12,
+  filters: SearchFilters = {},
+  options: { allowEmbedding?: boolean } = {}
+): Promise<MemorySearchResult[]> {
   const sb = serverSupabase();
   const cleanQuery = query.trim();
   const limit = Math.max(1, Math.min(k, 50));
   const project = await resolveProject(sb, filters.project_id, filters.project);
 
   let rpcRows: MemorySearchResult[] | null = null;
-  if (cleanQuery) {
+  if (cleanQuery && options.allowEmbedding) {
     const embedding = await createEmbedding(cleanQuery);
     if (embedding) {
       const { data, error } = await sb.rpc("search_memories_hybrid", {

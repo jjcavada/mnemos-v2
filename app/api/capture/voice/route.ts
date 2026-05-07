@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { requireApiToken } from "@/lib/api-auth";
 import { captureChat, envReport } from "@/lib/mnemos-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const unauthorized = requireApiToken(req);
+  if (unauthorized) return unauthorized;
+
   try {
     const form = await req.formData();
     const transcript = String(form.get("transcript") ?? "").trim();
