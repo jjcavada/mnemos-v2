@@ -223,11 +223,23 @@ export async function searchMemories(
     }
   }
 
-  const rows = rpcRows ?? await fallbackSearch(sb, cleanQuery, limit * 4);
+  const fallbackRows = await fallbackSearch(sb, cleanQuery, limit * 4);
+  const rows = mergeSearchRows(rpcRows ?? [], fallbackRows);
   return rows
     .filter(m => matchesFilters(m, filters, project?.id ?? filters.project_id))
     .map(m => ({ ...stripHeavyFields(m), why: explainMatch(m, cleanQuery) }))
     .slice(0, limit);
+}
+
+function mergeSearchRows(primary: MemorySearchResult[], fallback: MemorySearchResult[]) {
+  const seen = new Set<string>();
+  const merged: MemorySearchResult[] = [];
+  for (const row of [...primary, ...fallback]) {
+    if (!row.id || seen.has(row.id)) continue;
+    seen.add(row.id);
+    merged.push(row);
+  }
+  return merged;
 }
 
 export async function buildContextPack(query: string, k = 10, filters: SearchFilters = {}) {
