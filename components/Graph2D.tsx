@@ -2,6 +2,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMemoriesStore, applyFilters } from "@/store/memories";
+import { useGraphFocus } from "@/store/graph-focus";
 import type { Memory } from "@/lib/types";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
@@ -71,6 +72,8 @@ const GALAXY_STARS: GalaxyStar[] = generateGalaxyStars();
 
 export function Graph2D() {
   const { memories, relationships, projectsById, lifeAreas, select, selected, filters } = useMemoriesStore();
+  const focusTarget = useGraphFocus(s => s.target);
+  const clearFocus = useGraphFocus(s => s.clear);
   const fgRef = useRef<any>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const parallaxRef = useRef<HTMLDivElement | null>(null);
@@ -359,6 +362,51 @@ export function Graph2D() {
     const t = setTimeout(() => fitGraph(900), 800);
     return () => clearTimeout(t);
   }, [data]);
+
+  // ----- camera fly-to for Cmd-K focus targets -----
+  // Polls until the requested node has settled coordinates, then pans+zooms.
+  // For memory nodes, also opens the drawer.
+  useEffect(() => {
+    if (!focusTarget) return;
+    const fg = fgRef.current;
+    if (!fg) return;
+    // If graph hasn't seeded yet (just navigated in from another route),
+    // leave the target in place — the effect will re-run when `data` populates.
+    if (data.nodes.length === 0) return;
+    const node: any = data.nodes.find((n: any) => n.id === focusTarget.id);
+    if (!node) { clearFocus(); return; }
+
+    let cancelled = false;
+    let attempts = 0;
+    const tryFly = () => {
+      if (cancelled) return;
+      attempts++;
+      if (Number.isFinite(node.x) && Number.isFinite(node.y)) {
+        try {
+          fg.centerAt(node.x, node.y, 800);
+          const targetZoom =
+            node.kind === "memory" ? 2.6
+            : node.kind === "me" ? 1.4
+            : 1.9;
+          fg.zoom(targetZoom, 800);
+        } catch { /* ignore */ }
+        if (focusTarget.selectMemory && node.kind === "memory" && node.mem) {
+          select(node.mem);
+        }
+        // briefly highlight via hover state
+        setHovered(node.id);
+        setTimeout(() => {
+          setHovered(prev => (prev === node.id ? null : prev));
+        }, 1800);
+        clearFocus();
+        return;
+      }
+      if (attempts < 40) setTimeout(tryFly, 80);
+      else clearFocus();
+    };
+    tryFly();
+    return () => { cancelled = true; };
+  }, [focusTarget, data, select, clearFocus]);
 
   return (
     <div ref={wrapperRef} className="absolute inset-0">
