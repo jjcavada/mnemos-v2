@@ -7,7 +7,7 @@ import type { Memory } from "@/lib/types";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
-type NodeKind = "me" | "category-project" | "category-life" | "memory";
+type NodeKind = "me" | "category-project" | "category-life" | "category-meta" | "memory";
 
 type Node = {
   id: string;
@@ -26,6 +26,18 @@ type Node = {
 type Link = { source: string; target: string; relation: string };
 
 const ME_ID = "me:jay";
+const LINKS_CAT_ID = "cat:meta:links";
+
+// A memory belongs to the Links cluster if it carries an http(s) source_url.
+// This keeps Hermes' GitHub captures and any other web-link memories in their
+// own orbital, separate from project/life clusters.
+function bucketKeyFor(m: Memory): string {
+  const url = m.source_url;
+  if (typeof url === "string" && /^https?:\/\//i.test(url)) return LINKS_CAT_ID;
+  return m.is_project && m.project_id
+    ? `cat:project:${m.project_id}`
+    : `cat:life:${m.life_area ?? "other"}`;
+}
 
 type GalaxyStar = { x: number; y: number; size: number; alpha: number; hue: "white" | "warm" | "cool" };
 
@@ -128,7 +140,10 @@ export function Graph2D() {
     // ----- determine which categories are present -----
     const usedProjectIds = new Set<string>();
     const usedLifeSlugs = new Set<string>();
+    let hasLinks = false;
     filtered.forEach(m => {
+      const key = bucketKeyFor(m);
+      if (key === LINKS_CAT_ID) { hasLinks = true; return; }
       if (m.is_project && m.project_id) usedProjectIds.add(m.project_id);
       else if (!m.is_project) usedLifeSlugs.add(m.life_area ?? "other");
     });
@@ -153,7 +168,11 @@ export function Graph2D() {
       };
     });
 
-    const allCats = [...projectCats, ...lifeCats];
+    const metaCats = hasLinks
+      ? [{ id: LINKS_CAT_ID, label: "LINKS", color: "#A1A1AA", metaSlug: "links" }]
+      : [];
+
+    const allCats = [...projectCats, ...lifeCats, ...metaCats];
 
     // ----- radial seeding: ME at center, categories on a ring -----
     const HUB_RADIUS = 280;
@@ -181,9 +200,13 @@ export function Graph2D() {
 
     // category nodes
     for (const c of allCats) {
+      const kind: NodeKind =
+        c.id.startsWith("cat:project:") ? "category-project"
+        : c.id.startsWith("cat:meta:") ? "category-meta"
+        : "category-life";
       nodes.push({
         id: c.id,
-        kind: c.id.startsWith("cat:project:") ? "category-project" : "category-life",
+        kind,
         label: c.label,
         size: 6.5,
         groupKey: c.id,
@@ -196,18 +219,13 @@ export function Graph2D() {
     // memory nodes — bucketed under their category
     const catBuckets: Record<string, string[]> = {};
     for (const m of filtered) {
-      const cat = m.is_project && m.project_id
-        ? `cat:project:${m.project_id}`
-        : `cat:life:${m.life_area ?? "other"}`;
-      (catBuckets[cat] ||= []).push(m.id);
+      (catBuckets[bucketKeyFor(m)] ||= []).push(m.id);
     }
     const catBucketIdx: Record<string, number> = {};
     Object.values(catBuckets).forEach(b => b.forEach((id, i) => { catBucketIdx[id] = i; }));
 
     for (const m of filtered) {
-      const cat = m.is_project && m.project_id
-        ? `cat:project:${m.project_id}`
-        : `cat:life:${m.life_area ?? "other"}`;
+      const cat = bucketKeyFor(m);
       const center = catCenter[cat] ?? { x: 0, y: 0 };
       const bucket = catBuckets[cat];
       const idx = catBucketIdx[m.id];
@@ -235,10 +253,7 @@ export function Graph2D() {
 
     // category → its memories
     for (const m of filtered) {
-      const cat = m.is_project && m.project_id
-        ? `cat:project:${m.project_id}`
-        : `cat:life:${m.life_area ?? "other"}`;
-      syntheticLinks.push({ source: cat, target: m.id, relation: "contains" });
+      syntheticLinks.push({ source: bucketKeyFor(m), target: m.id, relation: "contains" });
     }
 
     // existing memory↔memory relationships
@@ -471,7 +486,7 @@ export function Graph2D() {
 
           // ---- float: category nodes drift y by sin wave, ME stays still ----
           let drawY = node.y;
-          if (node.kind === "category-project" || node.kind === "category-life") {
+          if (typeof node.kind === "string" && node.kind.startsWith("category")) {
             drawY = node.y + Math.sin(Date.now() / 1400 + (node.x + node.y) * 0.005) * 4;
           }
 
@@ -581,17 +596,22 @@ export function Graph2D() {
           }
 
           // ----- category hub: medium disc + always-visible label, gentle float -----
-          if (node.kind === "category-project" || node.kind === "category-life") {
+          if (node.kind === "category-project" || node.kind === "category-life" || node.kind === "category-meta") {
             const cy = drawY;
+            const isMeta = node.kind === "category-meta";
             // ring
-            ctx.strokeStyle = isSelected ? "rgba(255,255,255,0.95)" : "rgba(229,229,229,0.55)";
+            ctx.strokeStyle = isSelected ? "rgba(255,255,255,0.95)"
+              : isMeta ? "rgba(180,210,255,0.65)"
+              : "rgba(229,229,229,0.55)";
             ctx.lineWidth = (isSelected ? 1.6 : 0.9) / scale;
             ctx.beginPath();
             ctx.arc(node.x, cy, r + 3, 0, Math.PI * 2);
             ctx.stroke();
 
             // fill
-            ctx.fillStyle = node.kind === "category-project" ? "rgba(229,229,229,0.92)" : "rgba(161,161,170,0.85)";
+            ctx.fillStyle = node.kind === "category-project" ? "rgba(229,229,229,0.92)"
+              : isMeta ? "rgba(190,210,255,0.85)"
+              : "rgba(161,161,170,0.85)";
             ctx.beginPath();
             ctx.arc(node.x, cy, r, 0, Math.PI * 2);
             ctx.fill();
@@ -600,6 +620,14 @@ export function Graph2D() {
             ctx.beginPath();
             ctx.arc(node.x, cy, r * 0.45, 0, Math.PI * 2);
             ctx.fill();
+
+            // meta-only inner accent dot — denotes "links / external"
+            if (isMeta) {
+              ctx.fillStyle = "rgba(190,210,255,0.95)";
+              ctx.beginPath();
+              ctx.arc(node.x, cy, r * 0.18, 0, Math.PI * 2);
+              ctx.fill();
+            }
 
             // label
             const fs = Math.max(9.5 / scale, 3.4);
@@ -611,7 +639,9 @@ export function Graph2D() {
             const w = ctx.measureText(labelText).width;
             ctx.fillStyle = "rgba(5,5,5,0.78)";
             ctx.fillRect(node.x - w / 2 - 3, labelY - 1, w + 6, fs + 4);
-            ctx.fillStyle = node.kind === "category-project" ? "#F4F4F5" : "rgba(229,229,229,0.85)";
+            ctx.fillStyle = node.kind === "category-project" ? "#F4F4F5"
+              : isMeta ? "rgba(200,220,255,0.95)"
+              : "rgba(229,229,229,0.85)";
             ctx.fillText(labelText, node.x, labelY);
 
             ctx.restore();
@@ -668,7 +698,8 @@ export function Graph2D() {
           ctx.fill();
         }}
         onNodeClick={(n: any) => {
-          if (n.kind === "me" || n.kind === "category-project" || n.kind === "category-life") {
+          const isHub = n.kind === "me" || (typeof n.kind === "string" && n.kind.startsWith("category"));
+          if (isHub) {
             // pan + zoom on hub clicks; no drawer for now
             fgRef.current?.centerAt(n.x, n.y, 700);
             fgRef.current?.zoom(Math.max(fgRef.current?.zoom() ?? 1, 1.8), 700);
@@ -682,7 +713,7 @@ export function Graph2D() {
         }}
         onNodeRightClick={(n: any) => {
           if (n.id === ME_ID) return;
-          if (n.kind === "category-project" || n.kind === "category-life") return;
+          if (typeof n.kind === "string" && n.kind.startsWith("category")) return;
           n.fx = undefined; n.fy = undefined;
         }}
         onNodeHover={(n: any) => {

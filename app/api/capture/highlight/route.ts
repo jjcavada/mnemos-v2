@@ -7,12 +7,22 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const body = await req.json() as CaptureChatBody & { url?: string };
-    const text = [body.title, body.url, body.text].filter(Boolean).join("\n\n");
+    const url = typeof body.url === "string" ? body.url.trim() : "";
+    const text = [body.title, url, body.text].filter(Boolean).join("\n\n");
+    const isGithub = /github\.com/i.test(url);
+    const baseTags = body.tags ?? [];
+    const augmentedTags = [
+      ...baseTags,
+      "highlight",
+      "link",
+      ...(isGithub ? ["github"] : [])
+    ];
     const result = await captureChat({
       ...body,
       text,
-      source: "browser-ext",
-      tags: [...(body.tags ?? []), "highlight"]
+      source: body.source ?? "browser-ext",
+      source_url: body.source_url ?? (url || undefined),
+      tags: augmentedTags
     });
     return NextResponse.json({ ok: true, result });
   } catch (error) {

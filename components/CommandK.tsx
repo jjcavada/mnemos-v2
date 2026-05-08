@@ -173,6 +173,21 @@ export function CommandK() {
       if (lifeMatches.length >= 3) break;
     }
 
+    // ----- meta: Links hub (only present when there are link memories) -----
+    const metaMatches: CmdItem[] = [];
+    const hasLinkMemories = memories.some(m =>
+      typeof m.source_url === "string" && /^https?:\/\//i.test(m.source_url)
+    );
+    if (hasLinkMemories && ("links".includes(q) || q.includes("link") || q.includes("github") || q.includes("url"))) {
+      metaMatches.push({
+        kind: "graph",
+        label: "Links",
+        hint: "external URLs · Hermes captures",
+        icon: Crosshair,
+        targetId: "cat:meta:links"
+      });
+    }
+
     // ----- memory matches: summary or content -----
     const memoryMatches: CmdItem[] = [];
     for (const m of memories) {
@@ -198,7 +213,7 @@ export function CommandK() {
     // dedupe by (kind,targetId|href)
     const out: CmdItem[] = [];
     const seen = new Set<string>();
-    for (const it of [...entityMatches, ...projectMatches, ...lifeMatches, ...memoryMatches, ...ask, ...navMatches]) {
+    for (const it of [...entityMatches, ...projectMatches, ...lifeMatches, ...metaMatches, ...memoryMatches, ...ask, ...navMatches]) {
       const key = it.kind === "graph" ? `g:${it.targetId}` : `n:${it.label}`;
       if (seen.has(key)) continue;
       seen.add(key);

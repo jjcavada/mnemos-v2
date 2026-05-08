@@ -57,6 +57,8 @@ export type CaptureChatBody = {
   importance?: number;
   occurred_at?: string;
   keep_raw?: boolean;
+  /** External URL the capture was extracted from (sets memories.source_url) */
+  source_url?: string;
 };
 
 export type CaptureResult = {
@@ -134,6 +136,10 @@ export async function captureChat(body: CaptureChatBody): Promise<CaptureResult>
 
   await upsertEntities(sb, allEntities(distillation));
 
+  const sourceUrl = typeof body.source_url === "string" && /^https?:\/\//i.test(body.source_url)
+    ? body.source_url
+    : null;
+
   const rawMemoryId = body.keep_raw === false
     ? null
     : await insertMemory(sb, {
@@ -143,6 +149,7 @@ export async function captureChat(body: CaptureChatBody): Promise<CaptureResult>
         source,
         project_id: project?.id ?? body.project_id ?? null,
         tags: [...new Set(["raw-capture", ...providedTags])],
+        source_url: sourceUrl,
         source_metadata: {
           capture_id: captureId,
           capture_kind: "raw_chat",
@@ -170,6 +177,7 @@ export async function captureChat(body: CaptureChatBody): Promise<CaptureResult>
       source,
       project_id: memoryProject?.id ?? (m.is_project ? body.project_id ?? project?.id ?? null : null),
       tags: [...new Set([...m.tags, ...providedTags])],
+      source_url: sourceUrl,
       source_metadata: {
         capture_id: captureId,
         capture_kind: "distilled_chat",
