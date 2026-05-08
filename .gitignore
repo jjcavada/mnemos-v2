@@ -7,3 +7,8 @@ out
 next-env.d.ts
 
 .vercel
+
+# debug / iteration artifacts
+.playwright-mcp/
+graph-*.png
+*.screenshot.png
